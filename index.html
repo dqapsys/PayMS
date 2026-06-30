@@ -69,7 +69,7 @@ firebase.initializeApp({
 });
 const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
-const PAYMS_BUILD='20260630.7';
+const PAYMS_BUILD='20260630.8';
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
 let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{}},activeTab='dashboard',selectedPaymentId='';
 
@@ -151,9 +151,20 @@ function renderAll(){renderDashboard();renderNew();renderApprovals();renderPayme
 function statusBadge(s){const map={PENDING_MANAGER:['Manager Verify','s-manager'],PENDING_PRATIM:['Pratim Recommend','s-pratim'],PENDING_UPDESH:['Updesh Approval','s-updesh'],READY_FOR_PAYMENT:['Ready for Dev','s-dev'],PAID:['PAID','s-paid'],REJECTED:['Rejected','s-rej']};const m=map[s]||['Open','s-open'];return`<span class="badge ${m[1]}">${m[0]}</span>`}
 function projectLabel(id){const p=projectsData.find(x=>x.id===id);return p?`${p.number||''} ${p.name||p.projName||''}`.trim():'-'}
 function crmLabel(type,id){const row=(type==='Deal'?dealsData:contactsData).find(x=>x.id===id);return row?(type==='Deal'?(row.title||row.dealTitle||'Deal'):(row.name||row.company||'Contact')):'-'}
+function isPratimValue(v){return norm(v)==='pratim'||norm(v).includes('pratim')}
+function isUpdeshValue(v){return norm(v)==='updesh'||norm(v).includes('updesh')}
+function managerIsPratim(r){return isPratimValue(r.managerUsername)||isPratimValue(r.managerName)}
+function managerIsUpdesh(r){return isUpdeshValue(r.managerUsername)||isUpdeshValue(r.managerName)}
 function canApprove(r){if(r.status==='PENDING_MANAGER')return currentUserRole==='manager'||isUser(r.managerUsername)||isUser(r.managerName)||isAdmin();if(r.status==='PENDING_PRATIM')return isPratim();if(r.status==='PENDING_UPDESH')return isUpdesh();return false}
+function canReferToPratim(r){return r.status==='PENDING_UPDESH'&&managerIsUpdesh(r)&&isUpdesh()&&!r.referredToPratim}
 function nextStatus(s){return{PENDING_MANAGER:'PENDING_PRATIM',PENDING_PRATIM:'PENDING_UPDESH',PENDING_UPDESH:'READY_FOR_PAYMENT'}[s]||s}
-function actionLabel(s){return{PENDING_MANAGER:'Verified and forwarded to Pratim',PENDING_PRATIM:'Recommended and forwarded to Updesh',PENDING_UPDESH:'Approved for Dev payment'}[s]||'Updated'}
+function actionLabel(s){return{PENDING_MANAGER:'Verified and forwarded to Pratim',PENDING_PRATIM:'Verified / recommended and forwarded to Updesh',PENDING_UPDESH:'Verified and approved for Dev payment'}[s]||'Updated'}
+function initialWorkflowForManager(mgr){
+  const username=mgr?.username||mgr?.fullName||'',fullName=mgr?.fullName||mgr?.username||'';
+  if(isUpdeshValue(username)||isUpdeshValue(fullName))return{status:'PENDING_UPDESH',audit:'Created request and sent directly to Updesh for verification and approval'};
+  if(isPratimValue(username)||isPratimValue(fullName))return{status:'PENDING_PRATIM',audit:'Created request and sent directly to Pratim for verification / recommendation'};
+  return{status:'PENDING_MANAGER',audit:'Created request and sent to Reporting Manager'};
+}
 function userKey(u){return norm(u?.username||u?.fullName||u)}
 function userDisplay(u){return u?`${u.fullName||u.displayName||u.username||''}${u.username?' ('+u.username+')':''}`:'-'}
 function currentSubmitterManager(){
@@ -199,7 +210,8 @@ async function submitRequest(){
   if(type==='Vendor Payment'&&!vendor)return showToast('Vendor / payee is required for vendor payment','error');
   const [crmType,crmId]=(crmRaw||'|').split('|');const mgr=usersData.find(u=>(u.username||u.fullName)===managerRaw)||{};
   const ref=db.collection(PAYMS_COL).doc();
-  const req={requestNo:'PAY-'+ref.id.slice(0,6).toUpperCase(),type,title,amount,projectId,crmType,crmId,vendor,purpose,status:'PENDING_MANAGER',submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:'Created request and sent to Reporting Manager'}]};
+  const flow=initialWorkflowForManager(mgr);
+  const req={requestNo:'PAY-'+ref.id.slice(0,6).toUpperCase(),type,title,amount,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}]};
   await ref.set(req);showToast('Request submitted');switchTab('dashboard');
 }
 function requestTable(list,actions){
@@ -209,6 +221,14 @@ function requestTable(list,actions){
 function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(paymsData.filter(r=>r.status!=='PAID'),false)}</div>`}
 async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
 async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
+
+function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`}
+function requestTable(list,actions){
+  if(!list.length)return'<div class="empty">No payment requests found.</div>';
+  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div></td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td>${actionButtons(r)}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
+}
+async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
+async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];await db.collection(PAYMS_COL).doc(id).update({status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),audit});showToast('Request referred to Pratim')}
 
 function renderPayments(){const list=paymsData.filter(r=>['READY_FOR_PAYMENT','PAID'].includes(r.status));const selected=paymsData.find(r=>r.id===selectedPaymentId)||list.find(r=>r.status==='READY_FOR_PAYMENT')||list[0];selectedPaymentId=selected?.id||'';el('tab-payments').innerHTML=`<div class="card"><div class="card-header">Approved expenses for Dev</div>${paymentTable(list)}</div><div class="card"><div class="card-header">Record payment</div>${selected?paymentForm(selected):'<div class="empty">No approved request is ready for payment.</div>'}</div>`;paymentMethodChanged()}
 function paymentTable(list){if(!list.length)return'<div class="empty">No Updesh-approved payment requests.</div>';return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th class="right">Amount</th><th>Status</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(r.requestNo||r.id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.type)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td><button class="btn sm" onclick="selectedPaymentId='${r.id}';renderPayments()">Open</button></td></tr>`).join('')}</tbody></table></div>`}
@@ -224,14 +244,15 @@ function renderSettings(){
   const map=paymsSettings.reportingManagers||{};
   tab.innerHTML=`<div class="card"><div class="card-header">PayMS approval hierarchy <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
     <div style="background:var(--pl);border-radius:8px;padding:11px 12px;margin-bottom:12px;font-size:12px;line-height:1.6">
-      <b>Fixed approval chain:</b> Submitter -> Reporting Manager -> Pratim -> Updesh -> Dev payment.<br>
-      Use this page to set each user's Reporting Manager. Reporting Managers report to Pratim, and Pratim reports to Updesh.
+      <b>Approval chain:</b> Submitter -> Reporting Manager -> Pratim -> Updesh -> Dev payment.<br>
+      Direct reports to Pratim start at Pratim. Direct reports to Updesh start at Updesh, with an optional referral to Pratim.
     </div>
     <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Reporting Manager</th><th>Next Levels</th></tr></thead><tbody>
       ${users.map(u=>{
         const current=map[userKey(u)]||{};
         const currentVal=current.username||current.fullName||current||'';
-        return `<tr><td><b>${esc(u.fullName||u.displayName||u.username)}</b><div class="muted">${esc(u.username||'')}</div></td><td>${esc(u.role||'user')}</td><td><select data-user="${esc(userKey(u))}" data-username="${esc(u.username||'')}" data-fullname="${esc(u.fullName||u.displayName||u.username||'')}"><option value="">-- Select manager --</option>${managers.map(m=>`<option value="${esc(m.username||m.fullName)}" ${norm(currentVal)===norm(m.username)||norm(currentVal)===norm(m.fullName)?'selected':''}>${esc(m.fullName||m.username)} (${esc(m.username||m.role||'')})</option>`).join('')}</select></td><td><span class="badge s-pratim">Reports to Pratim</span> <span class="badge s-updesh">Pratim to Updesh</span></td></tr>`;
+        const next=isUpdeshValue(currentVal)?'<span class="badge s-updesh">Direct Updesh approval</span> <span class="badge s-pratim">Pratim optional</span>':(isPratimValue(currentVal)?'<span class="badge s-pratim">Pratim verifies</span> <span class="badge s-updesh">Then Updesh</span>':'<span class="badge s-manager">Manager verifies</span> <span class="badge s-pratim">Then Pratim</span> <span class="badge s-updesh">Then Updesh</span>');
+        return `<tr><td><b>${esc(u.fullName||u.displayName||u.username)}</b><div class="muted">${esc(u.username||'')}</div></td><td>${esc(u.role||'user')}</td><td><select data-user="${esc(userKey(u))}" data-username="${esc(u.username||'')}" data-fullname="${esc(u.fullName||u.displayName||u.username||'')}"><option value="">-- Select manager --</option>${managers.map(m=>`<option value="${esc(m.username||m.fullName)}" ${norm(currentVal)===norm(m.username)||norm(currentVal)===norm(m.fullName)?'selected':''}>${esc(m.fullName||m.username)} (${esc(m.username||m.role||'')})</option>`).join('')}</select></td><td>${next}</td></tr>`;
       }).join('')}
     </tbody></table></div></div>`;
 }
