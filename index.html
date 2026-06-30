@@ -1,324 +1,195 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>DQAP PayMS</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect fill='%23006994' width='64' height='64' rx='12'/%3E%3Ctext x='32' y='42' font-size='34' text-anchor='middle'%3E%E2%82%B9%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    :root{--p:#006994;--pd:#004A68;--pl:#E4F1FA;--bg:#F4F6FA;--card:#fff;--t1:#111;--t2:#666;--bd:rgba(0,0,0,.11);--bds:rgba(0,0,0,.22);--ok:#1B5E20;--warn:#B26A00;--bad:#B00020;--info:#263F65;--sw:220px;--rad:10px}
-    body{font-family:Aptos,"Aptos Display","DM Sans","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--t1);font-size:13px}
-    button,input,select,textarea{font:inherit}
-    .app{display:flex;min-height:100vh}
-    .sidebar{width:var(--sw);background:linear-gradient(180deg,var(--p),var(--pd));color:#fff;position:fixed;inset:0 auto 0 0;display:flex;flex-direction:column;box-shadow:3px 0 14px rgba(0,0,0,.22);z-index:10}
-    .brand{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.16)}
-    .logo{background:#fff;color:var(--p);border-radius:6px;padding:6px 10px;text-align:center;font-weight:800;font-size:14px;letter-spacing:.2px}
-    .rolebox{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.14)}
-    .rolebox label{display:block;font-size:9px;letter-spacing:1.2px;text-transform:uppercase;opacity:.7;margin-bottom:5px}
-    .rolebox select{width:100%;border:0;border-radius:7px;padding:6px 8px;background:#fff;color:var(--p);font-size:12px;font-weight:700}
-    .sb-sec{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.45;padding:11px 12px 6px}
-    .nav{padding:0 8px;display:flex;flex-direction:column;gap:3px}
-    .nav button,.external-link{width:100%;display:flex;align-items:center;gap:8px;border:0;background:transparent;color:rgba(255,255,255,.82);text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;text-decoration:none;font-size:12.5px}
-    .nav button.active,.nav button:hover,.external-link:hover{background:rgba(255,255,255,.18);color:#fff}
-    .dot{width:7px;height:7px;border-radius:50%;background:#fff;opacity:.8;flex:0 0 7px}
-    .main{margin-left:var(--sw);width:calc(100% - var(--sw));min-height:100vh}
-    .topbar{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:.5px solid var(--bd);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .pg-t{font-size:15px;font-weight:700}.pg-s{font-size:11px;color:var(--t2);margin-top:1px}
-    .tr{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-    .content{padding:14px 18px}
-    .grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin-bottom:12px}
-    .stat,.card{background:var(--card);border:.5px solid var(--bd);border-radius:var(--rad)}
-    .stat{padding:11px 12px}.sv{font-size:21px;font-weight:800;color:var(--p)}.sl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
-    .card{margin-bottom:12px;overflow:hidden}.ch{padding:10px 12px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:8px}.ct{font-weight:800;font-size:13px}.cs{font-size:10.5px;color:var(--t2);margin-top:1px}.cb{padding:12px}
-    .form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.span2{grid-column:span 2}.span4{grid-column:1/-1}
-    label{display:block;font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.35px;margin-bottom:4px}
-    .fi,.fs,.fta{width:100%;padding:6px 9px;border-radius:7px;border:.5px solid var(--bds);background:#fafafa;color:var(--t1);font-size:12.5px;outline:none}
-    .fta{min-height:64px;resize:vertical;line-height:1.45}.fi:focus,.fs:focus,.fta:focus{border-color:var(--p);box-shadow:0 0 0 2px rgba(0,105,148,.12)}
-    .btn{border:.5px solid var(--bds);background:#fff;color:var(--t1);border-radius:7px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-    .btn:hover{background:#f0f0f0}.btn.pri{background:var(--p);border-color:var(--p);color:#fff}.btn.pri:hover{background:var(--pd)}.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}.btn.bad{background:#fff;color:var(--bad);border-color:rgba(176,0,32,.35)}.btn.sm{padding:4px 8px;font-size:11px}
-    .pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 7px;font-size:10.5px;font-weight:800;white-space:nowrap;border:.5px solid transparent}
-    .p-draft{background:#eee;color:#555}.p-manager{background:#fff3d8;color:#8a5300;border-color:#ffd88a}.p-pratim{background:#e8f1ff;color:#263F65;border-color:#b9d2ff}.p-updesh{background:#efe8ff;color:#4b2888;border-color:#d6c5ff}.p-dev{background:#e3f7ec;color:#1B5E20;border-color:#a7dfbd}.p-paid{background:#dff4e7;color:#145b2b;border-color:#91d1a6}.p-rej{background:#ffe9ec;color:#9a0018;border-color:#ffc2ca}
-    .wtable-wrap{overflow:auto}.wtable{width:100%;border-collapse:collapse;min-width:980px}.wtable th{padding:8px 10px;text-align:left;font-size:9.5px;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;background:#fafafa;border-bottom:.5px solid var(--bd)}.wtable td{padding:8px 10px;border-bottom:.5px solid var(--bd);vertical-align:top;font-size:12px}.wtable tr:hover td{background:#fcfdff}
-    .muted{color:var(--t2);font-size:11px}.strong{font-weight:800}.right{text-align:right}.hidden{display:none!important}
-    .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.step{border:.5px solid var(--bd);background:#fff;border-radius:8px;padding:9px}.step b{font-size:11px}.step div{font-size:10.5px;color:var(--t2);margin-top:2px}.step.active{border-color:var(--p);background:var(--pl)}
-    .audit{display:flex;flex-direction:column;gap:7px}.audit-row{display:grid;grid-template-columns:125px 145px 1fr;gap:8px;padding:8px 9px;border:.5px solid var(--bd);border-radius:7px;background:#fff;font-size:12px}
-    .toast{position:fixed;right:18px;bottom:18px;background:#111;color:#fff;padding:9px 12px;border-radius:8px;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);z-index:40}.toast.ok{background:var(--ok)}.toast.err{background:var(--bad)}
-    @media(max-width:900px){.sidebar{position:static;width:100%;height:auto}.app{display:block}.main{margin-left:0;width:100%}.grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.span2,.span4{grid-column:1}.flow{grid-template-columns:1fr}.topbar{position:static}}
+    :root{--p:#006994;--pd:#004A68;--pl:#E4F1FA;--bg:#F4F6FA;--card:#fff;--t1:#111;--t2:#666;--bd:rgba(0,0,0,.11);--bds:rgba(0,0,0,.22);--rad:10px;--ok:#1B5E20;--warn:#E65100;--bad:#B71C1C}
+    body{font-family:'DM Sans','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--t1);font-size:13px}
+    .container{max-width:1420px;margin:0 auto;padding:20px}
+    .header{background:linear-gradient(135deg,var(--p),var(--pd));color:#fff;padding:26px 22px;border-radius:var(--rad);margin-bottom:16px;display:flex;justify-content:space-between;gap:16px;align-items:center}
+    .header h1{font-size:26px;margin-bottom:5px;display:flex;align-items:center;gap:10px;font-weight:700}
+    .header p{opacity:.9;font-size:13px}.userbox{background:rgba(255,255,255,.18);padding:11px 14px;border-radius:8px;min-width:210px}.userbox .lbl{font-size:10px;opacity:.85;margin-bottom:5px;text-transform:uppercase;letter-spacing:.7px}.userbox .nm{font-size:13px;font-weight:700}
+    .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}.tab-btn{padding:9px 14px;border-radius:7px;border:1px solid var(--bds);background:var(--card);color:var(--t1);cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;display:flex;align-items:center;gap:6px}.tab-btn:hover{border-color:var(--p);background:var(--pl)}.tab-btn.active{background:var(--p);color:#fff;border-color:var(--p)}
+    .tab-content{display:none}.tab-content.active{display:block}.card{background:var(--card);border-radius:var(--rad);border:.5px solid var(--bd);padding:16px;margin-bottom:14px}.card-header{font-size:13px;font-weight:700;margin:-16px -16px 14px;padding:12px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px}.stat{background:var(--card);border-radius:var(--rad);border:.5px solid var(--bd);padding:13px;display:flex;gap:11px;align-items:center}.stat-icon{width:36px;height:36px;background:var(--pl);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--p);font-size:19px;flex-shrink:0}.stat-value{font-size:20px;font-weight:700;color:var(--p)}.stat-label{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.4px}
+    table{width:100%;border-collapse:collapse}th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;background:#f5f5f5;border-bottom:.5px solid var(--bd);color:var(--t2)}td{padding:9px 10px;border-bottom:.5px solid var(--bd);vertical-align:top}tr:hover td{background:#fafafa}.table-wrap{overflow-x:auto}
+    .btn{padding:7px 12px;border-radius:7px;border:.5px solid var(--bds);background:transparent;color:var(--t1);cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:5px;font-family:inherit;white-space:nowrap}.btn:hover{background:#f0f0f0}.btn.primary{background:var(--p);color:#fff;border-color:var(--p)}.btn.primary:hover{background:var(--pd)}.btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}.btn.bad{color:var(--bad);border-color:#EF9A9A}.btn.sm{padding:5px 9px;font-size:11px}.btn:disabled{opacity:.45;cursor:not-allowed}
+    input,select,textarea{font-family:inherit}input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:7px;background:#fafafa;color:var(--t1);font-size:12.5px}input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);background:#fff}textarea{min-height:78px;resize:vertical}.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}.form-group label{display:block;font-size:10.5px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}.req::after{content:' *';color:var(--bad)}
+    .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;white-space:nowrap}.s-manager{background:#FFF3E0;color:#E65100}.s-pratim{background:#E3F2FD;color:#006994}.s-updesh{background:#F3E5F5;color:#6A1B9A}.s-dev{background:#E8F5E9;color:#1B5E20}.s-paid{background:#E8F5E9;color:#1B5E20}.s-rej{background:#FFEBEE;color:#B71C1C}.s-open{background:#ECEFF1;color:#455A64}
+    .muted{color:var(--t2);font-size:11px}.strong{font-weight:700}.right{text-align:right}.hidden{display:none!important}.empty{text-align:center;color:var(--t2);padding:30px 12px}.audit-row{display:grid;grid-template-columns:145px 150px 1fr;gap:10px;border-bottom:.5px solid var(--bd);padding:9px 0}.toast{position:fixed;right:18px;bottom:18px;background:#1A237E;color:#fff;padding:10px 14px;border-radius:10px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,.18)}.toast.error{background:var(--bad)}.toast.success{background:var(--ok)}
+    .error-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;z-index:99}.error-card{background:#fff;border-radius:12px;border:.5px solid var(--bd);box-shadow:0 10px 30px rgba(0,0,0,.12);max-width:520px;padding:26px;text-align:center}.error-card h2{color:var(--bad);margin-bottom:8px}
+    @media(max-width:720px){.container{padding:12px}.header{align-items:flex-start;flex-direction:column}.audit-row{grid-template-columns:1fr}.tabs{gap:6px}.tab-btn{padding:8px 10px}.card{padding:12px}.card-header{margin:-12px -12px 12px;padding:10px 12px}}
   </style>
 </head>
 <body>
-<div class="app">
-  <aside class="sidebar">
-    <div class="brand"><div class="logo">DQAP PayMS</div></div>
-    <div class="rolebox">
-      <label>Switch user</label>
-      <select id="role" onchange="setRole(this.value)">
-        <option value="submitter">Submitter</option>
-        <option value="manager">Reporting Manager</option>
-        <option value="pratim">Pratim</option>
-        <option value="updesh">Updesh</option>
-        <option value="dev">Dev (Finance)</option>
-      </select>
-    </div>
-    <div class="sb-sec">Payment workflow</div>
-    <div class="nav">
-      <button id="nav-dashboard" class="active" onclick="setTab('dashboard')"><span class="dot"></span>Dashboard</button>
-      <button id="nav-new" onclick="setTab('new')"><span class="dot"></span>New expense</button>
-      <button id="nav-approvals" onclick="setTab('approvals')"><span class="dot"></span>Approvals</button>
-      <button id="nav-payments" onclick="setTab('payments')"><span class="dot"></span>Payments</button>
-      <button id="nav-audit" onclick="setTab('audit')"><span class="dot"></span>Audit trail</button>
-    </div>
-    <div class="sb-sec">Wiki pointer</div>
-    <div class="nav">
-      <a class="external-link" href="../index.html" title="Placeholder link for Wiki side integration"><span class="dot"></span>Back to Wiki</a>
-      <a class="external-link" href="../crm-deals-compact-table-2026-06-30/index.html" title="Placeholder link for CRM side integration"><span class="dot"></span>Open CRM</a>
-    </div>
-  </aside>
+<div id="appContainer" class="container" style="display:none">
+  <div class="header">
+    <div><h1><i class="ti ti-receipt-rupee"></i> PayMS</h1><p>Payment requests, approvals, finance recording and audit trail</p></div>
+    <div class="userbox"><div class="lbl">Logged in as</div><div class="nm" id="currentUser">-</div></div>
+  </div>
 
-  <main class="main">
-    <div class="topbar">
-      <div><div class="pg-t" id="pageTitle">Payment Management</div><div class="pg-s" id="pageSub">Tour advance, vendor payments and finance recording</div></div>
-      <div class="tr">
-        <button class="btn" onclick="seedDemo(true)">Reset demo</button>
-        <button class="btn pri" onclick="setTab('new')">+ New expense</button>
-      </div>
-    </div>
-    <div class="content">
-      <section id="view-dashboard"></section>
-      <section id="view-new" class="hidden"></section>
-      <section id="view-approvals" class="hidden"></section>
-      <section id="view-payments" class="hidden"></section>
-      <section id="view-audit" class="hidden"></section>
-    </div>
-  </main>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')"><i class="ti ti-layout-dashboard"></i>Dashboard</button>
+    <button class="tab-btn" data-tab="new" onclick="switchTab('new')"><i class="ti ti-plus"></i>New Request</button>
+    <button class="tab-btn" data-tab="approvals" onclick="switchTab('approvals')"><i class="ti ti-checkup-list"></i>Approvals</button>
+    <button class="tab-btn" data-tab="payments" onclick="switchTab('payments')"><i class="ti ti-building-bank"></i>Payments</button>
+    <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')"><i class="ti ti-history"></i>Audit Trail</button>
+  </div>
+
+  <section id="tab-dashboard" class="tab-content active"></section>
+  <section id="tab-new" class="tab-content"></section>
+  <section id="tab-approvals" class="tab-content"></section>
+  <section id="tab-payments" class="tab-content"></section>
+  <section id="tab-audit" class="tab-content"></section>
 </div>
 
 <script>
-const STORE_KEY='dqap_payms_offline_v1';
-const users={submitter:'Submitter',manager:'Reporting Manager',pratim:'Pratim',updesh:'Updesh',dev:'Dev (Finance)'};
-const projects=[
-  {id:'PRJ-24001',name:'IOCL Analyzer Upgrade',client:'IOCL Panipat'},
-  {id:'PRJ-24002',name:'HPCL Tank Farm Automation',client:'HPCL Mumbai'},
-  {id:'PRJ-24003',name:'NTPC CEMS Integration',client:'NTPC Dadri'}
-];
-const crmLinks=[
-  {id:'CRM-CON-001',type:'Contact',name:'Amit Sharma - IOCL'},
-  {id:'CRM-DEAL-184',type:'Deal',name:'HPCL Yokogawa PLC Expansion'},
-  {id:'CRM-CON-014',type:'Contact',name:'Neha Verma - NTPC'}
-];
-const statusMeta={
-  DRAFT:['Draft','p-draft'],PENDING_MANAGER:['Manager verification','p-manager'],PENDING_PRATIM:['Pratim recommendation','p-pratim'],PENDING_UPDESH:['Updesh final approval','p-updesh'],READY_FOR_PAYMENT:['Ready for Dev payment','p-dev'],PAID:['PAID &check;','p-paid'],REJECTED:['Rejected','p-rej']
-};
-let state=loadState();
-let role=localStorage.getItem('dqap_payms_role')||'submitter';
-let tab='dashboard';
-let selectedPaymentId=null;
+firebase.initializeApp({
+  apiKey:"AIzaSyBV2ZQwfqvgPyzLz75wsSIg9N5gjPHY-R8",
+  authDomain:"dqap-wiki.firebaseapp.com",
+  projectId:"dqap-wiki",
+  storageBucket:"dqap-wiki.firebasestorage.app",
+  messagingSenderId:"932523956178",
+  appId:"1:932523956178:web:cc83a8e7369eaa80649a0b"
+});
+const db=firebase.firestore();
+const PAYMS_COL='dqap_payms_requests',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
+const PAYMS_BUILD='20260630.6';
+let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
+let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,activeTab='dashboard',selectedPaymentId='';
 
-function loadState(){
-  try{const raw=localStorage.getItem(STORE_KEY);if(raw)return JSON.parse(raw)}catch(e){}
-  return seedData();
-}
-function save(){localStorage.setItem(STORE_KEY,JSON.stringify(state))}
-function seedData(){
-  return {
-    nextNo:5,
-    expenses:[
-      {id:'PAY-0001',no:'PAY-0001',type:'Tour Advance',title:'Site visit advance - IOCL Panipat',amount:45000,submitter:'Rahul Mehta',manager:'Reporting Manager',projectId:'PRJ-24001',crmId:'CRM-CON-001',vendor:'',purpose:'Travel, hotel and local conveyance for IOCL analyzer commissioning.',status:'READY_FOR_PAYMENT',createdAt:'2026-06-28',updatedAt:'2026-06-30',payment:null},
-      {id:'PAY-0002',no:'PAY-0002',type:'Vendor Payment',title:'Panel wiring vendor invoice',amount:128500,submitter:'Sonal Gupta',manager:'Reporting Manager',projectId:'PRJ-24002',crmId:'CRM-DEAL-184',vendor:'Shakti Electricals',purpose:'Final wiring bill for HPCL panel dispatch.',status:'PENDING_PRATIM',createdAt:'2026-06-29',updatedAt:'2026-06-29',payment:null},
-      {id:'PAY-0003',no:'PAY-0003',type:'Tour Advance',title:'NTPC FAT travel advance',amount:32000,submitter:'Vikram Singh',manager:'Reporting Manager',projectId:'PRJ-24003',crmId:'CRM-CON-014',vendor:'',purpose:'Advance against FAT coordination travel.',status:'PENDING_MANAGER',createdAt:'2026-06-30',updatedAt:'2026-06-30',payment:null},
-      {id:'PAY-0004',no:'PAY-0004',type:'Vendor Payment',title:'Courier and packing payment',amount:7600,submitter:'Anita Rao',manager:'Reporting Manager',projectId:'PRJ-24002',crmId:'CRM-DEAL-184',vendor:'Blue Dart',purpose:'Urgent courier dispatch to site.',status:'PAID',createdAt:'2026-06-26',updatedAt:'2026-06-30',payment:{method:'Bank Transfer',date:'2026-06-30',utr:'UTR202406300001',bank:'YES Bank',notes:'Paid from finance dashboard.'}}
-    ],
-    audit:[
-      auditObj('PAY-0001','Submitter','Created expense request'),
-      auditObj('PAY-0001','Reporting Manager','Verified and forwarded to Pratim'),
-      auditObj('PAY-0001','Pratim','Recommended and forwarded to Updesh'),
-      auditObj('PAY-0001','Updesh','Approved for Dev payment'),
-      auditObj('PAY-0002','Submitter','Created vendor payment request'),
-      auditObj('PAY-0002','Reporting Manager','Verified and forwarded to Pratim'),
-      auditObj('PAY-0003','Submitter','Created tour advance request'),
-      auditObj('PAY-0004','Dev (Finance)','Recorded Bank Transfer payment, UTR UTR202406300001, YES Bank')
-    ]
-  };
-}
-function auditObj(id,actor,action){return{time:new Date().toLocaleString('en-IN',{hour12:false}),id,actor,action}}
-function seedDemo(force){if(force&&!confirm('Reset offline PayMS demo data?'))return;state=seedData();save();selectedPaymentId=null;render();toast('Demo data reset','ok')}
-function today(){return new Date().toISOString().slice(0,10)}
-function fmt(n){return 'Rs. '+Number(n||0).toLocaleString('en-IN')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function statusPill(s){const m=statusMeta[s]||statusMeta.DRAFT;return `<span class="pill ${m[1]}">${m[0]}</span>`}
-function getProject(id){return projects.find(p=>p.id===id)||{}}
-function getCrm(id){return crmLinks.find(c=>c.id===id)||{}}
-function addAudit(id,actor,action){state.audit.unshift({time:new Date().toLocaleString('en-IN',{hour12:false}),id,actor,action})}
-function toast(msg,type=''){const t=document.createElement('div');t.className='toast '+type;t.innerHTML=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000)}
+function el(id){return document.getElementById(id)}
+function g(id){return(el(id)?.value||'').trim()}
+function fmtAmt(n){return Number(n||0).toLocaleString('en-IN')}
+function today(){return new Date().toISOString().split('T')[0]}
+function nowIso(){return new Date().toISOString()}
+function norm(s){return String(s||'').trim().toLowerCase()}
+function roleName(){return currentUserData?.displayName||currentUserData?.fullName||currentUser||'-'}
+function isUser(name){return norm(currentUser)===norm(name)||norm(currentUserData?.fullName)===norm(name)}
+function isAdmin(){return ['admin','tech_admin'].includes(norm(currentUserRole))||norm(currentUser)==='updesh'}
+function isDev(){return norm(currentUser)==='dev'||norm(currentUserData?.fullName)==='dev'||isAdmin()}
+function isPratim(){return norm(currentUser)==='pratim'||norm(currentUserData?.fullName).includes('pratim')||isAdmin()}
+function isUpdesh(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh')||isAdmin()}
+function showToast(msg,type='success'){const t=document.createElement('div');t.className='toast '+(type==='error'?'error':'success');t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200)}
+function showError(message){const d=document.createElement('div');d.className='error-screen';d.innerHTML=`<div class="error-card"><h2>PayMS Access</h2><p style="color:var(--t2);line-height:1.6">${esc(message)}</p><button class="btn primary" style="margin-top:16px" onclick="location.href='https://dqapsys.github.io/dqap-wiki/'">Go to Wiki</button></div>`;document.body.appendChild(d);el('appContainer').style.display='none'}
 
-function setRole(v){role=v;localStorage.setItem('dqap_payms_role',role);if(role==='dev')tab='payments';document.getElementById('role').value=role;render()}
-function setTab(v){tab=v;selectedPaymentId=null;render()}
-function showOnly(id){['dashboard','new','approvals','payments','audit'].forEach(v=>{document.getElementById('view-'+v).classList.toggle('hidden',v!==id);document.getElementById('nav-'+v).classList.toggle('active',v===id)})}
-
-function render(){
-  document.getElementById('role').value=role;
-  showOnly(tab);
-  const titles={dashboard:['Payment Management','Tour advance, vendor payments and finance recording'],new:['New Expense Request','Submit payment requests with project and CRM linkage'],approvals:['Approval Desk','Manager, Pratim and Updesh workflow actions'],payments:['Payments','Dev finance records payment details here'],audit:['Audit Trail','Automatic history for every request']};
-  document.getElementById('pageTitle').textContent=titles[tab][0];
-  document.getElementById('pageSub').textContent=titles[tab][1]+' - '+users[role];
-  renderDashboard();renderNew();renderApprovals();renderPayments();renderAudit();
+function initializeAuth(){
+  if(authInitialized)return;authInitialized=true;
+  let sess=null;
+  const fragment=new URLSearchParams(window.location.hash.slice(1));
+  const query=new URLSearchParams(window.location.search);
+  const handoffSession=fragment.get('sess')||query.get('sess');
+  const receivedHandoff=!!handoffSession;
+  try{sess=sessionStorage.getItem('dqap_sess')}catch(e){}
+  if(!sess)sess=handoffSession;
+  if(sess){try{sessionStorage.setItem('dqap_sess',sess)}catch(e){} if(receivedHandoff)history.replaceState(null,document.title,window.location.pathname+window.location.search)}
+  if(!sess){showError('This page must be accessed through the Wiki portal. Please login to Wiki first.');return}
+  try{wikiSession=JSON.parse(sess);autoLoginFromWiki(wikiSession)}catch(e){showError('Session error. Please login to Wiki and try again.')}
 }
+async function autoLoginFromWiki(session){
+  try{
+    const username=session.username,displayName=session.displayName||session.fullName||username;
+    const usersRef=db.collection(USERS_COL);
+    const q=await usersRef.where('username','==',username).limit(1).get();
+    let userData=!q.empty?q.docs[0].data():null;
+    if(!userData){const legacy=await usersRef.doc(username).get();if(legacy.exists)userData=legacy.data()}
+    if(!userData&&session.username&&session.role)userData={username:session.username,fullName:session.fullName||displayName,displayName,role:session.role,isAdmin:session.isAdmin};
+    if(!userData){showError(`User "${username}" not found in Wiki users.`);return}
+    currentUser=username;currentUserRole=userData.role||'user';currentUserData={...userData,displayName:userData.displayName||userData.fullName||displayName};
+    el('currentUser').textContent=`${currentUserData.displayName||username} (${currentUserRole})`;
+    el('appContainer').style.display='block';
+    await loadReferenceData();
+    startPaymsListen();
+    showToast('Welcome, '+(currentUserData.displayName||username));
+  }catch(error){showError('Login failed: '+error.message)}
+}
+async function loadReferenceData(){
+  const [usersSnap,projSnap,contactsSnap,dealsSnap]=await Promise.allSettled([
+    db.collection(USERS_COL).orderBy('fullName','asc').get(),
+    db.collection(PROJ_COL).orderBy('createdAt','desc').get(),
+    db.collection(CRM_CUSTOMERS).limit(300).get(),
+    db.collection(CRM_DEALS).limit(300).get()
+  ]);
+  if(usersSnap.status==='fulfilled')usersData=usersSnap.value.docs.map(d=>({id:d.id,...d.data()}));
+  if(projSnap.status==='fulfilled')projectsData=projSnap.value.docs.map(d=>({id:d.id,...d.data()}));
+  if(contactsSnap.status==='fulfilled')contactsData=contactsSnap.value.docs.map(d=>({id:d.id,...d.data()}));
+  if(dealsSnap.status==='fulfilled')dealsData=dealsSnap.value.docs.map(d=>({id:d.id,...d.data()}));
+}
+function startPaymsListen(){
+  if(paymsUnsub)paymsUnsub();
+  paymsUnsub=db.collection(PAYMS_COL).orderBy('createdAt','desc').onSnapshot(sn=>{paymsData=sn.docs.map(d=>({id:d.id,...d.data()}));renderAll()},err=>{showToast('Could not load PayMS data: '+err.message,'error')});
+}
+
+function switchTab(tab){activeTab=tab;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));renderAll()}
+function renderAll(){renderDashboard();renderNew();renderApprovals();renderPayments();renderAudit()}
+function statusBadge(s){const map={PENDING_MANAGER:['Manager Verify','s-manager'],PENDING_PRATIM:['Pratim Recommend','s-pratim'],PENDING_UPDESH:['Updesh Approval','s-updesh'],READY_FOR_PAYMENT:['Ready for Dev','s-dev'],PAID:['PAID','s-paid'],REJECTED:['Rejected','s-rej']};const m=map[s]||['Open','s-open'];return`<span class="badge ${m[1]}">${m[0]}</span>`}
+function projectLabel(id){const p=projectsData.find(x=>x.id===id);return p?`${p.number||''} ${p.name||p.projName||''}`.trim():'-'}
+function crmLabel(type,id){const row=(type==='Deal'?dealsData:contactsData).find(x=>x.id===id);return row?(type==='Deal'?(row.title||row.dealTitle||'Deal'):(row.name||row.company||'Contact')):'-'}
+function canApprove(r){if(r.status==='PENDING_MANAGER')return currentUserRole==='manager'||isUser(r.managerUsername)||isUser(r.managerName)||isAdmin();if(r.status==='PENDING_PRATIM')return isPratim();if(r.status==='PENDING_UPDESH')return isUpdesh();return false}
+function nextStatus(s){return{PENDING_MANAGER:'PENDING_PRATIM',PENDING_PRATIM:'PENDING_UPDESH',PENDING_UPDESH:'READY_FOR_PAYMENT'}[s]||s}
+function actionLabel(s){return{PENDING_MANAGER:'Verified and forwarded to Pratim',PENDING_PRATIM:'Recommended and forwarded to Updesh',PENDING_UPDESH:'Approved for Dev payment'}[s]||'Updated'}
 
 function renderDashboard(){
-  const counts={total:state.expenses.length,pending:state.expenses.filter(e=>!['PAID','REJECTED'].includes(e.status)).length,ready:state.expenses.filter(e=>e.status==='READY_FOR_PAYMENT').length,paid:state.expenses.filter(e=>e.status==='PAID').length};
-  const amount=state.expenses.reduce((s,e)=>s+Number(e.amount||0),0);
-  document.getElementById('view-dashboard').innerHTML=`
-    <div class="grid">
-      <div class="stat"><div class="sv">${counts.total}</div><div class="sl">Total requests</div></div>
-      <div class="stat"><div class="sv">${counts.pending}</div><div class="sl">In approval flow</div></div>
-      <div class="stat"><div class="sv">${counts.ready}</div><div class="sl">Ready for Dev</div></div>
-      <div class="stat"><div class="sv">${fmt(amount)}</div><div class="sl">Total value</div></div>
-    </div>
-    <div class="card"><div class="ch"><div><div class="ct">Approval route</div><div class="cs">Submitter creates expense -> Manager verifies -> Pratim recommends -> Updesh final approval -> Dev records payment</div></div></div><div class="cb"><div class="flow">
-      <div class="step active"><b>1. Submitter</b><div>Create request and attach project/CRM reference.</div></div>
-      <div class="step"><b>2. Reporting Manager</b><div>Verify and send to Pratim.</div></div>
-      <div class="step"><b>3. Pratim</b><div>Recommend for final approval.</div></div>
-      <div class="step"><b>4. Updesh</b><div>Approve for payment dashboard.</div></div>
-      <div class="step"><b>5. Dev</b><div>Record method, reference and completion.</div></div>
-    </div></div></div>
-    <div class="card"><div class="ch"><div><div class="ct">Recent requests</div><div class="cs">Offline demo data saved in this browser</div></div><button class="btn sm" onclick="setTab('approvals')">Review</button></div>${expenseTable(state.expenses.slice(0,8),true)}</div>`;
+  const total=paymsData.length,pending=paymsData.filter(r=>!['PAID','REJECTED'].includes(r.status)).length,ready=paymsData.filter(r=>r.status==='READY_FOR_PAYMENT').length,paid=paymsData.filter(r=>r.status==='PAID').length,amount=paymsData.reduce((s,r)=>s+Number(r.amount||0),0);
+  el('tab-dashboard').innerHTML=`<div class="stats">
+    <div class="stat"><div class="stat-icon"><i class="ti ti-file-invoice"></i></div><div><div class="stat-value">${total}</div><div class="stat-label">Requests</div></div></div>
+    <div class="stat"><div class="stat-icon"><i class="ti ti-clock"></i></div><div><div class="stat-value">${pending}</div><div class="stat-label">In workflow</div></div></div>
+    <div class="stat"><div class="stat-icon"><i class="ti ti-building-bank"></i></div><div><div class="stat-value">${ready}</div><div class="stat-label">Ready for Dev</div></div></div>
+    <div class="stat"><div class="stat-icon"><i class="ti ti-currency-rupee"></i></div><div><div class="stat-value">Rs ${fmtAmt(amount)}</div><div class="stat-label">Total value</div></div></div>
+  </div><div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="switchTab('new')"><i class="ti ti-plus"></i>New</button></div>${requestTable(paymsData.slice(0,10),false)}</div>`;
 }
-
 function renderNew(){
-  document.getElementById('view-new').innerHTML=`
-  <div class="card"><div class="ch"><div><div class="ct">Create expense</div><div class="cs">Tour Advance requires project and CRM contact/deal linkage</div></div></div>
-    <div class="cb">
-      <form id="expenseForm" onsubmit="createExpense(event)">
-        <div class="form-grid">
-          <div><label>Expense type</label><select id="f-type" class="fs" onchange="toggleTourRules()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div>
-          <div><label>Amount</label><input id="f-amount" class="fi" type="number" min="1" required placeholder="45000"></div>
-          <div><label>Submitter</label><input id="f-submitter" class="fi" required value="Current User"></div>
-          <div><label>Reporting manager</label><input id="f-manager" class="fi" required value="Reporting Manager"></div>
-          <div class="span2"><label>Title</label><input id="f-title" class="fi" required placeholder="Site visit advance / vendor invoice"></div>
-          <div><label id="projectLabel">Project link *</label><select id="f-project" class="fs">${projects.map(p=>`<option value="${p.id}">${p.id} - ${p.name}</option>`).join('')}</select></div>
-          <div><label id="crmLabel">CRM contact/deal *</label><select id="f-crm" class="fs">${crmLinks.map(c=>`<option value="${c.id}">${c.type}: ${c.name}</option>`).join('')}</select></div>
-          <div class="span2"><label>Vendor / payee</label><input id="f-vendor" class="fi" placeholder="Required for vendor payment"></div>
-          <div class="span4"><label>Purpose / notes</label><textarea id="f-purpose" class="fta" required placeholder="Payment reason, invoice details, expected travel dates, etc."></textarea></div>
-        </div>
-        <div class="tr" style="margin-top:10px"><button class="btn pri" type="submit">Submit to Reporting Manager</button><button class="btn" type="button" onclick="document.getElementById('expenseForm').reset();toggleTourRules()">Clear</button></div>
-      </form>
-    </div>
-  </div>`;
-  toggleTourRules();
+  const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='updesh'||norm(u.username)==='pratim');
+  const crmOpts=[...contactsData.map(c=>({type:'Contact',id:c.id,label:c.name||c.company||c.contact||c.id})),...dealsData.map(d=>({type:'Deal',id:d.id,label:d.title||d.dealTitle||d.id}))];
+  el('tab-new').innerHTML=`<div class="card"><div class="card-header">Create payment request</div>
+    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleTourRules()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label><select id="f-manager">${managers.map(u=>`<option value="${esc(u.username||u.fullName)}">${esc(u.fullName||u.username)} (${esc(u.role||'user')})</option>`).join('')||'<option value="Reporting Manager">Reporting Manager</option>'}</select></div></div>
+    <div class="form-row"><div class="form-group"><label class="req">Title</label><input id="f-title" placeholder="Tour advance / vendor invoice"></div><div class="form-group"><label id="projectLabel" class="req">Wiki Project Link</label><select id="f-project">${projectsData.map(p=>`<option value="${p.id}">${esc((p.number||'')+' '+(p.name||p.projName||''))}</option>`).join('')||'<option value="">No projects found</option>'}</select></div><div class="form-group"><label id="crmLabel" class="req">CRM Contact / Deal</label><select id="f-crm">${crmOpts.map(o=>`<option value="${o.type}|${o.id}">${o.type}: ${esc(o.label)}</option>`).join('')||'<option value="">CRM ready for expansion</option>'}</select></div></div>
+    <div class="form-row"><div class="form-group"><label>Vendor / Payee</label><input id="f-vendor" placeholder="Required for vendor payment"></div><div class="form-group"><label class="req">Purpose / Notes</label><textarea id="f-purpose"></textarea></div></div>
+    <button class="btn primary" onclick="submitRequest()"><i class="ti ti-send"></i>Submit to Reporting Manager</button>
+  </div>`;toggleTourRules();
 }
-function toggleTourRules(){
-  const tour=document.getElementById('f-type')?.value==='Tour Advance';
-  if(!document.getElementById('f-project'))return;
-  document.getElementById('projectLabel').textContent=tour?'Project link *':'Project link';
-  document.getElementById('crmLabel').textContent=tour?'CRM contact/deal *':'CRM contact/deal';
+function toggleTourRules(){const tour=g('f-type')==='Tour Advance';const p=el('projectLabel'),c=el('crmLabel');if(p)p.className=tour?'req':'';if(c)c.className=tour?'req':''}
+async function submitRequest(){
+  const type=g('f-type'),amount=Number(g('f-amount')),title=g('f-title'),projectId=g('f-project'),crmRaw=g('f-crm'),vendor=g('f-vendor'),purpose=g('f-purpose'),managerRaw=g('f-manager');
+  if(!title||!amount||!purpose)return showToast('Enter title, amount and purpose','error');
+  if(type==='Tour Advance'&&(!projectId||!crmRaw))return showToast('Tour Advance requires Wiki project and CRM contact/deal linkage','error');
+  if(type==='Vendor Payment'&&!vendor)return showToast('Vendor / payee is required for vendor payment','error');
+  const [crmType,crmId]=(crmRaw||'|').split('|');const mgr=usersData.find(u=>(u.username||u.fullName)===managerRaw)||{};
+  const ref=db.collection(PAYMS_COL).doc();
+  const req={requestNo:'PAY-'+ref.id.slice(0,6).toUpperCase(),type,title,amount,projectId,crmType,crmId,vendor,purpose,status:'PENDING_MANAGER',submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:'Created request and sent to Reporting Manager'}]};
+  await ref.set(req);showToast('Request submitted');switchTab('dashboard');
 }
-function createExpense(ev){
-  ev.preventDefault();
-  const type=val('f-type'),projectId=val('f-project'),crmId=val('f-crm'),vendor=val('f-vendor');
-  if(type==='Tour Advance'&&(!projectId||!crmId))return toast('Tour Advance must be linked to a Wiki project and CRM contact/deal','err');
-  if(type==='Vendor Payment'&&!vendor)return toast('Vendor / payee is required for vendor payment','err');
-  const no='PAY-'+String(state.nextNo++).padStart(4,'0');
-  state.expenses.unshift({id:no,no,type,title:val('f-title'),amount:Number(val('f-amount')),submitter:val('f-submitter'),manager:val('f-manager'),projectId,crmId,vendor,purpose:val('f-purpose'),status:'PENDING_MANAGER',createdAt:today(),updatedAt:today(),payment:null});
-  addAudit(no,users[role],`Created ${type} request and sent to Reporting Manager`);
-  save();toast('Expense submitted to Reporting Manager','ok');tab='dashboard';render();
+function requestTable(list,actions){
+  if(!list.length)return'<div class="empty">No payment requests found.</div>';
+  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div></td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td><button class="btn sm primary" onclick="approveRequest('${r.id}')">Approve</button> <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
-function val(id){return(document.getElementById(id)?.value||'').trim()}
+function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(paymsData.filter(r=>r.status!=='PAID'),false)}</div>`}
+async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
+async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
 
-function renderApprovals(){
-  const queue=state.expenses.filter(e=>approvalRoleFor(e.status)===role);
-  const all=state.expenses.filter(e=>e.status!=='PAID');
-  document.getElementById('view-approvals').innerHTML=`
-    <div class="card"><div class="ch"><div><div class="ct">${users[role]} queue</div><div class="cs">${queue.length} request(s) need your action</div></div></div>${expenseTable(queue,false,true)}</div>
-    <div class="card"><div class="ch"><div><div class="ct">All open requests</div><div class="cs">Read-only tracking across the chain</div></div></div>${expenseTable(all,true,false)}</div>`;
-}
-function approvalRoleFor(status){return{PENDING_MANAGER:'manager',PENDING_PRATIM:'pratim',PENDING_UPDESH:'updesh'}[status]||''}
-function approve(id){
-  const e=state.expenses.find(x=>x.id===id);if(!e)return;
-  const map={PENDING_MANAGER:['PENDING_PRATIM','Verified and forwarded to Pratim'],PENDING_PRATIM:['PENDING_UPDESH','Recommended and forwarded to Updesh'],PENDING_UPDESH:['READY_FOR_PAYMENT','Approved for Dev payment dashboard']};
-  const next=map[e.status];if(!next)return;
-  e.status=next[0];e.updatedAt=today();addAudit(e.id,users[role],next[1]);save();toast(next[1],'ok');render();
-}
-function rejectReq(id){
-  const reason=prompt('Reason for rejection');if(reason===null)return;
-  const e=state.expenses.find(x=>x.id===id);if(!e)return;
-  e.status='REJECTED';e.updatedAt=today();addAudit(e.id,users[role],`Rejected request${reason?': '+reason:''}`);save();toast('Request rejected','err');render();
-}
+function renderPayments(){const list=paymsData.filter(r=>['READY_FOR_PAYMENT','PAID'].includes(r.status));const selected=paymsData.find(r=>r.id===selectedPaymentId)||list.find(r=>r.status==='READY_FOR_PAYMENT')||list[0];selectedPaymentId=selected?.id||'';el('tab-payments').innerHTML=`<div class="card"><div class="card-header">Approved expenses for Dev</div>${paymentTable(list)}</div><div class="card"><div class="card-header">Record payment</div>${selected?paymentForm(selected):'<div class="empty">No approved request is ready for payment.</div>'}</div>`;paymentMethodChanged()}
+function paymentTable(list){if(!list.length)return'<div class="empty">No Updesh-approved payment requests.</div>';return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th class="right">Amount</th><th>Status</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(r.requestNo||r.id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.type)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td><button class="btn sm" onclick="selectedPaymentId='${r.id}';renderPayments()">Open</button></td></tr>`).join('')}</tbody></table></div>`}
+function paymentForm(r){const disabled=r.status==='PAID'||!isDev()?'disabled':'';return`<div class="form-row"><div class="form-group"><label>Method</label><select id="pay-method" onchange="paymentMethodChanged()" ${disabled}><option>Bank Transfer</option><option>Cheque</option><option>Cash</option></select></div><div class="form-group"><label>Payment Date</label><input id="pay-date" type="date" value="${today()}" ${disabled}></div><div class="form-group bank-field"><label>Bank</label><input id="pay-bank" value="YES Bank" ${disabled}></div><div class="form-group utr-field"><label>UTR</label><input id="pay-utr" value="UTR202406300001" ${disabled}></div><div class="form-group cheque-field hidden"><label>Cheque Number</label><input id="pay-cheque" ${disabled}></div><div class="form-group"><label>Notes</label><textarea id="pay-notes" ${disabled}></textarea></div></div>${r.status==='PAID'?'<span class="badge s-paid">Status: PAID</span>':`<button class="btn ok" onclick="recordPayment('${r.id}')" ${disabled}><i class="ti ti-check"></i>Record Payment & Complete</button>`}${!isDev()?'<div class="muted" style="margin-top:8px">Only Dev / admin can record payment.</div>':''}`}
+function paymentMethodChanged(){const m=g('pay-method');document.querySelectorAll('.bank-field').forEach(x=>x.classList.toggle('hidden',m==='Cash'));document.querySelectorAll('.utr-field').forEach(x=>x.classList.toggle('hidden',m!=='Bank Transfer'));document.querySelectorAll('.cheque-field').forEach(x=>x.classList.toggle('hidden',m!=='Cheque'))}
+async function recordPayment(id){const r=paymsData.find(x=>x.id===id);if(!r||r.status!=='READY_FOR_PAYMENT')return showToast('Only ready-for-payment requests can be recorded','error');if(!isDev())return showToast('Switch to Dev finance user','error');const method=g('pay-method'),date=g('pay-date'),bank=g('pay-bank'),utr=g('pay-utr'),cheque=g('pay-cheque'),notes=g('pay-notes');if(method==='Bank Transfer'&&(!date||!bank||!utr))return showToast('Bank Transfer requires date, bank and UTR','error');if(method==='Cheque'&&(!date||!bank||!cheque))return showToast('Cheque requires date, bank and cheque number','error');if(method==='Cash'&&(!date||!notes))return showToast('Cash requires date and notes','error');const payment={method,date,bank,utr,cheque,notes,recordedBy:currentUser,recordedByName:roleName(),recordedAt:nowIso()};const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:`Recorded ${method} payment. Status PAID`}];await db.collection(PAYMS_COL).doc(id).update({payment,status:'PAID',updatedAt:nowIso(),audit});showToast('Status -> PAID')}
+function renderAudit(){const rows=paymsData.flatMap(r=>(r.audit||[]).map(a=>({...a,requestNo:r.requestNo||r.id,title:r.title}))).sort((a,b)=>String(b.time).localeCompare(String(a.time)));el('tab-audit').innerHTML=`<div class="card"><div class="card-header">Automatic audit trail</div>${rows.length?rows.map(a=>`<div class="audit-row"><div class="muted">${esc(new Date(a.time).toLocaleString('en-IN'))}</div><div><b>${esc(a.requestNo)}</b><div class="muted">${esc(a.actor)}</div></div><div>${esc(a.action)}<div class="muted">${esc(a.title||'')}</div></div></div>`).join(''):'<div class="empty">No audit records yet.</div>'}</div>`}
 
-function renderPayments(){
-  const ready=state.expenses.filter(e=>e.status==='READY_FOR_PAYMENT'||e.status==='PAID');
-  const selected=state.expenses.find(e=>e.id===selectedPaymentId)||ready.find(e=>e.status==='READY_FOR_PAYMENT')||ready[0];
-  selectedPaymentId=selected?.id||null;
-  document.getElementById('view-payments').innerHTML=`
-  <div class="card"><div class="ch"><div><div class="ct">Approved expenses for Dev</div><div class="cs">Click an approved expense, fill payment details and complete</div></div></div>${paymentList(ready)}</div>
-  <div class="card"><div class="ch"><div><div class="ct">Record payment</div><div class="cs">${selected?esc(selected.no+' - '+selected.title):'No approved expense pending'}</div></div></div><div class="cb">${selected?paymentForm(selected):'<div class="muted">Nothing is ready for payment.</div>'}</div></div>`;
-  renderPaymentFields();
-}
-function paymentList(list){
-  if(!list.length)return '<div class="cb muted">No Updesh-approved requests available.</div>';
-  return `<div class="wtable-wrap"><table class="wtable"><thead><tr><th>No.</th><th>Expense</th><th>Project / CRM</th><th class="right">Amount</th><th>Status</th></tr></thead><tbody>${list.map(e=>`<tr style="cursor:pointer" onclick="selectPayment('${e.id}')"><td class="strong">${e.no}</td><td>${esc(e.title)}<div class="muted">${esc(e.type)}${e.vendor?' - '+esc(e.vendor):''}</div></td><td>${esc(getProject(e.projectId).name||'-')}<div class="muted">${esc(getCrm(e.crmId).name||'-')}</div></td><td class="right strong">${fmt(e.amount)}</td><td>${statusPill(e.status)}</td></tr>`).join('')}</tbody></table></div>`;
-}
-function selectPayment(id){selectedPaymentId=id;renderPayments()}
-function paymentForm(e){
-  const disabled=e.status==='PAID'?'disabled':'';
-  return `<form onsubmit="recordPayment(event,'${e.id}')">
-    <div class="form-grid">
-      <div><label>Payment method</label><select id="pay-method" class="fs" onchange="renderPaymentFields()" ${disabled}><option>Bank Transfer</option><option>Cheque</option><option>Cash</option></select></div>
-      <div><label>Payment date</label><input id="pay-date" class="fi" type="date" value="${today()}" required ${disabled}></div>
-      <div id="bankWrap"><label>Bank</label><input id="pay-bank" class="fi" value="YES Bank" ${disabled}></div>
-      <div id="utrWrap"><label>UTR</label><input id="pay-utr" class="fi" value="UTR202406300001" ${disabled}></div>
-      <div id="chequeWrap" class="hidden"><label>Cheque number</label><input id="pay-cheque" class="fi" placeholder="CHQ000123" ${disabled}></div>
-      <div class="span4"><label>Notes</label><textarea id="pay-notes" class="fta" placeholder="Payment remarks" ${disabled}>${e.status==='PAID'?esc(e.payment?.notes||''):'Payment completed as approved.'}</textarea></div>
-    </div>
-    <div class="tr" style="margin-top:10px">${e.status==='PAID'?'<span class="pill p-paid">Status: PAID &check;</span>':'<button class="btn ok" type="submit">&check; Record Payment & Complete</button>'}</div>
-  </form>`;
-}
-function renderPaymentFields(){
-  const m=document.getElementById('pay-method')?.value;if(!m)return;
-  const cash=m==='Cash',cheque=m==='Cheque';
-  document.getElementById('bankWrap')?.classList.toggle('hidden',cash);
-  document.getElementById('utrWrap')?.classList.toggle('hidden',cash||cheque);
-  document.getElementById('chequeWrap')?.classList.toggle('hidden',!cheque);
-  ['pay-bank','pay-utr','pay-cheque','pay-notes'].forEach(id=>{const x=document.getElementById(id);if(x)x.required=false});
-  if(m==='Bank Transfer'){document.getElementById('pay-bank').required=true;document.getElementById('pay-utr').required=true}
-  if(m==='Cheque'){document.getElementById('pay-bank').required=true;document.getElementById('pay-cheque').required=true}
-  if(m==='Cash'){document.getElementById('pay-notes').required=true}
-}
-function recordPayment(ev,id){
-  ev.preventDefault();
-  if(role!=='dev')return toast('Switch to Dev (Finance) to record payment','err');
-  const e=state.expenses.find(x=>x.id===id);if(!e||e.status!=='READY_FOR_PAYMENT')return toast('Only approved requests can be paid','err');
-  const method=val('pay-method'),date=val('pay-date'),bank=val('pay-bank'),utr=val('pay-utr'),cheque=val('pay-cheque'),notes=val('pay-notes');
-  if(method==='Bank Transfer'&&(!date||!bank||!utr))return toast('Bank Transfer requires date, UTR and bank','err');
-  if(method==='Cheque'&&(!date||!bank||!cheque))return toast('Cheque requires date, bank and cheque number','err');
-  if(method==='Cash'&&(!date||!notes))return toast('Cash requires date and notes','err');
-  e.payment={method,date,bank,utr,cheque,notes};e.status='PAID';e.updatedAt=today();
-  const ref=method==='Bank Transfer'?`, UTR ${utr}, ${bank}`:method==='Cheque'?`, cheque ${cheque}, ${bank}`:', cash';
-  addAudit(e.id,users[role],`Recorded ${method} payment${ref}. Status PAID`);
-  save();toast('Status -> PAID &check;','ok');render();
-}
-
-function renderAudit(){
-  const opts=['All',...state.expenses.map(e=>e.id)];
-  document.getElementById('view-audit').innerHTML=`
-    <div class="card"><div class="ch"><div><div class="ct">Automatic audit trail</div><div class="cs">Every approval and payment action is timestamped</div></div><select id="auditFilter" class="fs" style="width:160px" onchange="renderAuditRows()">${opts.map(o=>`<option>${o}</option>`).join('')}</select></div><div class="cb"><div id="auditRows" class="audit"></div></div></div>`;
-  renderAuditRows();
-}
-function renderAuditRows(){
-  const f=document.getElementById('auditFilter')?.value||'All';
-  const rows=state.audit.filter(a=>f==='All'||a.id===f);
-  document.getElementById('auditRows').innerHTML=rows.length?rows.map(a=>`<div class="audit-row"><div class="muted">${esc(a.time)}</div><div><span class="strong">${esc(a.id)}</span><div class="muted">${esc(a.actor)}</div></div><div>${esc(a.action)}</div></div>`).join(''):'<div class="muted">No audit rows.</div>';
-}
-
-function expenseTable(list,compact=false,actions=false){
-  if(!list.length)return '<div class="cb muted">No requests found.</div>';
-  return `<div class="wtable-wrap"><table class="wtable"><thead><tr><th>No.</th><th>Expense</th><th>Project / CRM</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(e=>{
-    const project=getProject(e.projectId),crm=getCrm(e.crmId);
-    return `<tr><td class="strong">${e.no}</td><td>${esc(e.title)}<div class="muted">${esc(e.type)}${e.vendor?' - '+esc(e.vendor):''}</div>${compact?'':`<div class="muted">${esc(e.purpose)}</div>`}</td><td>${esc(project.name||'-')}<div class="muted">${esc(crm.type||'CRM')}: ${esc(crm.name||'-')}</div></td><td>${esc(e.submitter)}<div class="muted">${esc(e.manager)}</div></td><td class="right strong">${fmt(e.amount)}</td><td>${statusPill(e.status)}</td><td>${esc(e.updatedAt)}</td>${actions?`<td><div class="tr"><button class="btn sm ok" onclick="approve('${e.id}')">Approve</button><button class="btn sm bad" onclick="rejectReq('${e.id}')">Reject</button></div></td>`:''}</tr>`;
-  }).join('')}</tbody></table></div>`;
-}
-
-render();
+window.addEventListener('load',initializeAuth);
+document.addEventListener('DOMContentLoaded',()=>{if(!currentUser)initializeAuth()});
 </script>
 </body>
 </html>
-
