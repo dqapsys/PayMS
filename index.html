@@ -47,6 +47,7 @@
     <button class="tab-btn" data-tab="approvals" onclick="switchTab('approvals')"><i class="ti ti-checkup-list"></i>Approvals</button>
     <button class="tab-btn" data-tab="payments" onclick="switchTab('payments')"><i class="ti ti-building-bank"></i>Payments</button>
     <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')"><i class="ti ti-history"></i>Audit Trail</button>
+    <button class="tab-btn" data-tab="settings" id="settingsTabBtn" onclick="switchTab('settings')" style="display:none"><i class="ti ti-settings"></i>Settings</button>
   </div>
 
   <section id="tab-dashboard" class="tab-content active"></section>
@@ -54,6 +55,7 @@
   <section id="tab-approvals" class="tab-content"></section>
   <section id="tab-payments" class="tab-content"></section>
   <section id="tab-audit" class="tab-content"></section>
+  <section id="tab-settings" class="tab-content"></section>
 </div>
 
 <script>
@@ -66,10 +68,10 @@ firebase.initializeApp({
   appId:"1:932523956178:web:cc83a8e7369eaa80649a0b"
 });
 const db=firebase.firestore();
-const PAYMS_COL='dqap_payms_requests',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
-const PAYMS_BUILD='20260630.6';
+const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
+const PAYMS_BUILD='20260630.7';
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
-let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,activeTab='dashboard',selectedPaymentId='';
+let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{}},activeTab='dashboard',selectedPaymentId='';
 
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function el(id){return document.getElementById(id)}
@@ -84,6 +86,7 @@ function isAdmin(){return ['admin','tech_admin'].includes(norm(currentUserRole))
 function isDev(){return norm(currentUser)==='dev'||norm(currentUserData?.fullName)==='dev'||isAdmin()}
 function isPratim(){return norm(currentUser)==='pratim'||norm(currentUserData?.fullName).includes('pratim')||isAdmin()}
 function isUpdesh(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh')||isAdmin()}
+function canManageSettings(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh')}
 function showToast(msg,type='success'){const t=document.createElement('div');t.className='toast '+(type==='error'?'error':'success');t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200)}
 function showError(message){const d=document.createElement('div');d.className='error-screen';d.innerHTML=`<div class="error-card"><h2>PayMS Access</h2><p style="color:var(--t2);line-height:1.6">${esc(message)}</p><button class="btn primary" style="margin-top:16px" onclick="location.href='https://dqapsys.github.io/dqap-wiki/'">Go to Wiki</button></div>`;document.body.appendChild(d);el('appContainer').style.display='none'}
 
@@ -112,7 +115,9 @@ async function autoLoginFromWiki(session){
     currentUser=username;currentUserRole=userData.role||'user';currentUserData={...userData,displayName:userData.displayName||userData.fullName||displayName};
     el('currentUser').textContent=`${currentUserData.displayName||username} (${currentUserRole})`;
     el('appContainer').style.display='block';
+    el('settingsTabBtn').style.display=canManageSettings()?'flex':'none';
     await loadReferenceData();
+    startSettingsListen();
     startPaymsListen();
     showToast('Welcome, '+(currentUserData.displayName||username));
   }catch(error){showError('Login failed: '+error.message)}
@@ -133,15 +138,35 @@ function startPaymsListen(){
   if(paymsUnsub)paymsUnsub();
   paymsUnsub=db.collection(PAYMS_COL).orderBy('createdAt','desc').onSnapshot(sn=>{paymsData=sn.docs.map(d=>({id:d.id,...d.data()}));renderAll()},err=>{showToast('Could not load PayMS data: '+err.message,'error')});
 }
+function startSettingsListen(){
+  if(settingsUnsub)settingsUnsub();
+  settingsUnsub=db.collection(SETTINGS_COL).doc('hierarchy').onSnapshot(doc=>{
+    paymsSettings=doc.exists?{reportingManagers:{},...doc.data()}:{reportingManagers:{}};
+    renderAll();
+  },err=>showToast('Could not load PayMS settings: '+err.message,'error'));
+}
 
-function switchTab(tab){activeTab=tab;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));renderAll()}
-function renderAll(){renderDashboard();renderNew();renderApprovals();renderPayments();renderAudit()}
+function switchTab(tab){if(tab==='settings'&&!canManageSettings())return showToast('Only Updesh can open PayMS settings','error');activeTab=tab;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));renderAll()}
+function renderAll(){renderDashboard();renderNew();renderApprovals();renderPayments();renderAudit();renderSettings()}
 function statusBadge(s){const map={PENDING_MANAGER:['Manager Verify','s-manager'],PENDING_PRATIM:['Pratim Recommend','s-pratim'],PENDING_UPDESH:['Updesh Approval','s-updesh'],READY_FOR_PAYMENT:['Ready for Dev','s-dev'],PAID:['PAID','s-paid'],REJECTED:['Rejected','s-rej']};const m=map[s]||['Open','s-open'];return`<span class="badge ${m[1]}">${m[0]}</span>`}
 function projectLabel(id){const p=projectsData.find(x=>x.id===id);return p?`${p.number||''} ${p.name||p.projName||''}`.trim():'-'}
 function crmLabel(type,id){const row=(type==='Deal'?dealsData:contactsData).find(x=>x.id===id);return row?(type==='Deal'?(row.title||row.dealTitle||'Deal'):(row.name||row.company||'Contact')):'-'}
 function canApprove(r){if(r.status==='PENDING_MANAGER')return currentUserRole==='manager'||isUser(r.managerUsername)||isUser(r.managerName)||isAdmin();if(r.status==='PENDING_PRATIM')return isPratim();if(r.status==='PENDING_UPDESH')return isUpdesh();return false}
 function nextStatus(s){return{PENDING_MANAGER:'PENDING_PRATIM',PENDING_PRATIM:'PENDING_UPDESH',PENDING_UPDESH:'READY_FOR_PAYMENT'}[s]||s}
 function actionLabel(s){return{PENDING_MANAGER:'Verified and forwarded to Pratim',PENDING_PRATIM:'Recommended and forwarded to Updesh',PENDING_UPDESH:'Approved for Dev payment'}[s]||'Updated'}
+function userKey(u){return norm(u?.username||u?.fullName||u)}
+function userDisplay(u){return u?`${u.fullName||u.displayName||u.username||''}${u.username?' ('+u.username+')':''}`:'-'}
+function currentSubmitterManager(){
+  const map=paymsSettings.reportingManagers||{};
+  const key=norm(currentUser);
+  const byUser=map[key]||map[norm(currentUserData?.fullName)];
+  if(byUser)return byUser;
+  return null;
+}
+function managerRecordFromSetting(setting){
+  if(!setting)return null;
+  return usersData.find(u=>norm(u.username)===norm(setting.username)||norm(u.fullName)===norm(setting.fullName)||norm(u.username)===norm(setting)||norm(u.fullName)===norm(setting))||null;
+}
 
 function renderDashboard(){
   const total=paymsData.length,pending=paymsData.filter(r=>!['PAID','REJECTED'].includes(r.status)).length,ready=paymsData.filter(r=>r.status==='READY_FOR_PAYMENT').length,paid=paymsData.filter(r=>r.status==='PAID').length,amount=paymsData.reduce((s,r)=>s+Number(r.amount||0),0);
@@ -154,9 +179,12 @@ function renderDashboard(){
 }
 function renderNew(){
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='updesh'||norm(u.username)==='pratim');
+  const mappedManager=managerRecordFromSetting(currentSubmitterManager());
+  const mappedValue=mappedManager?(mappedManager.username||mappedManager.fullName):'';
+  const managerOptions=(mappedManager?[mappedManager]:managers).map(u=>`<option value="${esc(u.username||u.fullName)}">${esc(u.fullName||u.username)} (${esc(u.role||'user')})</option>`).join('')||'<option value="">No reporting manager mapped</option>';
   const crmOpts=[...contactsData.map(c=>({type:'Contact',id:c.id,label:c.name||c.company||c.contact||c.id})),...dealsData.map(d=>({type:'Deal',id:d.id,label:d.title||d.dealTitle||d.id}))];
   el('tab-new').innerHTML=`<div class="card"><div class="card-header">Create payment request</div>
-    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleTourRules()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label><select id="f-manager">${managers.map(u=>`<option value="${esc(u.username||u.fullName)}">${esc(u.fullName||u.username)} (${esc(u.role||'user')})</option>`).join('')||'<option value="Reporting Manager">Reporting Manager</option>'}</select></div></div>
+    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleTourRules()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label><select id="f-manager" ${mappedManager?'disabled':''}>${managerOptions}</select><div class="muted" style="margin-top:4px">${mappedManager?'Auto-assigned by Updesh settings.':'No mapped manager found; ask Updesh to configure Settings.'}</div></div></div>
     <div class="form-row"><div class="form-group"><label class="req">Title</label><input id="f-title" placeholder="Tour advance / vendor invoice"></div><div class="form-group"><label id="projectLabel" class="req">Wiki Project Link</label><select id="f-project">${projectsData.map(p=>`<option value="${p.id}">${esc((p.number||'')+' '+(p.name||p.projName||''))}</option>`).join('')||'<option value="">No projects found</option>'}</select></div><div class="form-group"><label id="crmLabel" class="req">CRM Contact / Deal</label><select id="f-crm">${crmOpts.map(o=>`<option value="${o.type}|${o.id}">${o.type}: ${esc(o.label)}</option>`).join('')||'<option value="">CRM ready for expansion</option>'}</select></div></div>
     <div class="form-row"><div class="form-group"><label>Vendor / Payee</label><input id="f-vendor" placeholder="Required for vendor payment"></div><div class="form-group"><label class="req">Purpose / Notes</label><textarea id="f-purpose"></textarea></div></div>
     <button class="btn primary" onclick="submitRequest()"><i class="ti ti-send"></i>Submit to Reporting Manager</button>
@@ -166,6 +194,7 @@ function toggleTourRules(){const tour=g('f-type')==='Tour Advance';const p=el('p
 async function submitRequest(){
   const type=g('f-type'),amount=Number(g('f-amount')),title=g('f-title'),projectId=g('f-project'),crmRaw=g('f-crm'),vendor=g('f-vendor'),purpose=g('f-purpose'),managerRaw=g('f-manager');
   if(!title||!amount||!purpose)return showToast('Enter title, amount and purpose','error');
+  if(!managerRaw)return showToast('Reporting manager is not mapped. Ask Updesh to configure PayMS Settings.','error');
   if(type==='Tour Advance'&&(!projectId||!crmRaw))return showToast('Tour Advance requires Wiki project and CRM contact/deal linkage','error');
   if(type==='Vendor Payment'&&!vendor)return showToast('Vendor / payee is required for vendor payment','error');
   const [crmType,crmId]=(crmRaw||'|').split('|');const mgr=usersData.find(u=>(u.username||u.fullName)===managerRaw)||{};
@@ -187,6 +216,36 @@ function paymentForm(r){const disabled=r.status==='PAID'||!isDev()?'disabled':''
 function paymentMethodChanged(){const m=g('pay-method');document.querySelectorAll('.bank-field').forEach(x=>x.classList.toggle('hidden',m==='Cash'));document.querySelectorAll('.utr-field').forEach(x=>x.classList.toggle('hidden',m!=='Bank Transfer'));document.querySelectorAll('.cheque-field').forEach(x=>x.classList.toggle('hidden',m!=='Cheque'))}
 async function recordPayment(id){const r=paymsData.find(x=>x.id===id);if(!r||r.status!=='READY_FOR_PAYMENT')return showToast('Only ready-for-payment requests can be recorded','error');if(!isDev())return showToast('Switch to Dev finance user','error');const method=g('pay-method'),date=g('pay-date'),bank=g('pay-bank'),utr=g('pay-utr'),cheque=g('pay-cheque'),notes=g('pay-notes');if(method==='Bank Transfer'&&(!date||!bank||!utr))return showToast('Bank Transfer requires date, bank and UTR','error');if(method==='Cheque'&&(!date||!bank||!cheque))return showToast('Cheque requires date, bank and cheque number','error');if(method==='Cash'&&(!date||!notes))return showToast('Cash requires date and notes','error');const payment={method,date,bank,utr,cheque,notes,recordedBy:currentUser,recordedByName:roleName(),recordedAt:nowIso()};const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:`Recorded ${method} payment. Status PAID`}];await db.collection(PAYMS_COL).doc(id).update({payment,status:'PAID',updatedAt:nowIso(),audit});showToast('Status -> PAID')}
 function renderAudit(){const rows=paymsData.flatMap(r=>(r.audit||[]).map(a=>({...a,requestNo:r.requestNo||r.id,title:r.title}))).sort((a,b)=>String(b.time).localeCompare(String(a.time)));el('tab-audit').innerHTML=`<div class="card"><div class="card-header">Automatic audit trail</div>${rows.length?rows.map(a=>`<div class="audit-row"><div class="muted">${esc(new Date(a.time).toLocaleString('en-IN'))}</div><div><b>${esc(a.requestNo)}</b><div class="muted">${esc(a.actor)}</div></div><div>${esc(a.action)}<div class="muted">${esc(a.title||'')}</div></div></div>`).join(''):'<div class="empty">No audit records yet.</div>'}</div>`}
+function renderSettings(){
+  const tab=el('tab-settings');if(!tab)return;
+  if(!canManageSettings()){tab.innerHTML='';return;}
+  const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='pratim'||norm(u.username)==='updesh');
+  const users=usersData.filter(u=>norm(u.username)!=='updesh'&&!norm(u.fullName).includes('updesh')&&norm(u.username)!=='pratim'&&!norm(u.fullName).includes('pratim'));
+  const map=paymsSettings.reportingManagers||{};
+  tab.innerHTML=`<div class="card"><div class="card-header">PayMS approval hierarchy <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
+    <div style="background:var(--pl);border-radius:8px;padding:11px 12px;margin-bottom:12px;font-size:12px;line-height:1.6">
+      <b>Fixed approval chain:</b> Submitter -> Reporting Manager -> Pratim -> Updesh -> Dev payment.<br>
+      Use this page to set each user's Reporting Manager. Reporting Managers report to Pratim, and Pratim reports to Updesh.
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Reporting Manager</th><th>Next Levels</th></tr></thead><tbody>
+      ${users.map(u=>{
+        const current=map[userKey(u)]||{};
+        const currentVal=current.username||current.fullName||current||'';
+        return `<tr><td><b>${esc(u.fullName||u.displayName||u.username)}</b><div class="muted">${esc(u.username||'')}</div></td><td>${esc(u.role||'user')}</td><td><select data-user="${esc(userKey(u))}" data-username="${esc(u.username||'')}" data-fullname="${esc(u.fullName||u.displayName||u.username||'')}"><option value="">-- Select manager --</option>${managers.map(m=>`<option value="${esc(m.username||m.fullName)}" ${norm(currentVal)===norm(m.username)||norm(currentVal)===norm(m.fullName)?'selected':''}>${esc(m.fullName||m.username)} (${esc(m.username||m.role||'')})</option>`).join('')}</select></td><td><span class="badge s-pratim">Reports to Pratim</span> <span class="badge s-updesh">Pratim to Updesh</span></td></tr>`;
+      }).join('')}
+    </tbody></table></div></div>`;
+}
+async function savePaymsSettings(){
+  if(!canManageSettings())return showToast('Only Updesh can save settings','error');
+  const reportingManagers={};
+  document.querySelectorAll('#tab-settings select[data-user]').forEach(sel=>{
+    const userKeyVal=sel.getAttribute('data-user'),managerVal=sel.value;
+    const mgr=usersData.find(u=>norm(u.username)===norm(managerVal)||norm(u.fullName)===norm(managerVal));
+    if(managerVal)reportingManagers[userKeyVal]={username:mgr?.username||managerVal,fullName:mgr?.fullName||managerVal,role:mgr?.role||'manager'};
+  });
+  await db.collection(SETTINGS_COL).doc('hierarchy').set({reportingManagers,pratim:{username:'pratim',fullName:'Pratim'},updesh:{username:'updesh',fullName:'Updesh'},updatedAt:nowIso(),updatedBy:currentUser,updatedByName:roleName()},{merge:true});
+  showToast('PayMS reporting hierarchy saved');
+}
 
 window.addEventListener('load',initializeAuth);
 document.addEventListener('DOMContentLoaded',()=>{if(!currentUser)initializeAuth()});
