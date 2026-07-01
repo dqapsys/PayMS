@@ -93,7 +93,7 @@ function fileToBase64(file){
     reader.onerror=reject;reader.readAsDataURL(file);
   });
 }
-async function uploadReceiptIfAny(expenseId,submitterName){
+async function uploadReceiptIfAny(claimId,submitterName){
   const input=el('f-receipt');
   if(!input||!input.files||!input.files[0])return null;
   let file=input.files[0];
@@ -104,7 +104,7 @@ async function uploadReceiptIfAny(expenseId,submitterName){
   const fileBase64=await fileToBase64(file);
   const resp=await fetch(UPLOAD_RECEIPT_URL,{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({fileName:file.name,mimeType:file.type||'application/octet-stream',fileBase64,expenseId:expenseId||'',submitterName:submitterName||''})
+    body:JSON.stringify({fileName:file.name,mimeType:file.type||'application/octet-stream',fileBase64,claimId:claimId||'',submitterName:submitterName||''})
   });
   if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(err.error||'Receipt upload failed')}
   const data=await resp.json();
@@ -252,6 +252,7 @@ async function submitRequest(){
   if(type==='Vendor Payment'&&!vendor)return showToast('Vendor / payee is required for vendor payment','error');
   const [crmType,crmId]=(crmRaw||'|').split('|');const mgr=usersData.find(u=>(u.username||u.fullName)===managerRaw)||{};
   const ref=db.collection(PAYMS_COL).doc();
+  const claimId='PAY-'+ref.id.slice(0,6).toUpperCase();
   const flow=initialWorkflowForManager(mgr);
   const btn=el('submit-btn'),statusEl=el('receipt-status');
   let receiptFields={};
@@ -259,19 +260,19 @@ async function submitRequest(){
     if(el('f-receipt')&&el('f-receipt').files&&el('f-receipt').files[0]){
       if(btn)btn.disabled=true;
       if(statusEl)statusEl.textContent='Uploading receipt...';
-      receiptFields=await uploadReceiptIfAny(ref.id,roleName())||{};
+      receiptFields=await uploadReceiptIfAny(claimId,roleName())||{};
       if(statusEl)statusEl.textContent=receiptFields.receiptFileName?'Receipt attached: '+receiptFields.receiptFileName:'';
     }
   }catch(e){
     if(btn)btn.disabled=false;
     return showToast(e.message||'Receipt upload failed','error');
   }
-  const req={requestNo:'PAY-'+ref.id.slice(0,6).toUpperCase(),type,title,amount,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}],...receiptFields};
+  const req={requestNo:claimId,type,title,amount,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}],...receiptFields};
   await ref.set(req);if(btn)btn.disabled=false;showToast('Request submitted');switchTab('dashboard');
 }
 function requestTable(list,actions){
   if(!list.length)return'<div class="empty">No payment requests found.</div>';
-  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div>${r.receiptUrl?`<div class="muted"><a href="${esc(r.receiptUrl)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> Receipt</a></div>`:''}</td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td><button class="btn sm primary" onclick="approveRequest('${r.id}')">Approve</button> <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
+  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div>${r.receiptUrl?`<div class="muted"><a href="${esc(r.receiptUrl)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> Receipt</a></div>`:''}</td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td><button class="btn sm primary" onclick="approveRequest('${r.id}')">Approve</button> <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>${r.receiptUrl?` <a class="btn sm" href="${esc(r.receiptUrl)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> View Receipt</a>`:''}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
 function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(paymsData.filter(r=>r.status!=='PAID'),false)}</div>`}
 async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
