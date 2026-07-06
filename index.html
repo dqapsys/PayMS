@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,7 +27,10 @@
     .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px}.stat{background:var(--card);border-radius:var(--rad);border:.5px solid var(--bd);padding:13px;display:flex;gap:11px;align-items:center}.stat-icon{width:36px;height:36px;background:var(--pl);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--p);font-size:19px;flex-shrink:0}.stat-value{font-size:20px;font-weight:700;color:var(--p)}.stat-label{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.4px}
     table{width:100%;border-collapse:collapse}th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;background:#f5f5f5;border-bottom:.5px solid var(--bd);color:var(--t2)}td{padding:9px 10px;border-bottom:.5px solid var(--bd);vertical-align:top}tr:hover td{background:#fafafa}.table-wrap{overflow-x:auto}
     .btn{padding:7px 12px;border-radius:7px;border:.5px solid var(--bds);background:transparent;color:var(--t1);cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:5px;font-family:inherit;white-space:nowrap}.btn:hover{background:#f0f0f0}.btn.primary{background:var(--p);color:#fff;border-color:var(--p)}.btn.primary:hover{background:var(--pd)}.btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}.btn.bad{color:var(--bad);border-color:#EF9A9A}.btn.sm{padding:5px 9px;font-size:11px}.btn:disabled{opacity:.45;cursor:not-allowed}
-    input,select,textarea{font-family:inherit}input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:7px;background:#fafafa;color:var(--t1);font-size:12.5px}input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);background:#fff}textarea{min-height:78px;resize:vertical}.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}.form-group label{display:block;font-size:10.5px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}.req::after{content:' *';color:var(--bad)}
+    input,select,textarea{font-family:inherit}input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:7px;background:#fafafa;color:var(--t1);font-size:12.5px}input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);background:#fff}textarea{min-height:78px;resize:vertical}
+    input[type="checkbox"],input[type="radio"]{width:16px;height:16px;padding:0;margin:0;flex-shrink:0;accent-color:var(--p);background:none;border:none}
+    .check-opt{display:flex;align-items:flex-start;gap:8px;padding:9px 11px;border:1px solid var(--bd);border-radius:8px;background:#fafafa;cursor:pointer}.check-opt input{margin-top:2px}.check-opt .check-txt{display:flex;flex-direction:column;gap:2px}.check-opt .check-txt b{font-size:12.5px;font-weight:700}.check-opt .check-txt span{font-size:10.5px;color:var(--t2);text-transform:none;letter-spacing:normal;font-weight:400}
+    .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}.form-group label{display:block;font-size:10.5px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}.req::after{content:' *';color:var(--bad)}
     .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;white-space:nowrap}.s-manager{background:#FFF3E0;color:#E65100}.s-pratim{background:#E3F2FD;color:#006994}.s-updesh{background:#F3E5F5;color:#6A1B9A}.s-dev{background:#E8F5E9;color:#1B5E20}.s-paid{background:#E8F5E9;color:#1B5E20}.s-rej{background:#FFEBEE;color:#B71C1C}.s-open{background:#ECEFF1;color:#455A64}
     .muted{color:var(--t2);font-size:11px}.strong{font-weight:700}.right{text-align:right}.hidden{display:none!important}.empty{text-align:center;color:var(--t2);padding:30px 12px}.audit-row{display:grid;grid-template-columns:145px 150px 1fr;gap:10px;border-bottom:.5px solid var(--bd);padding:9px 0}.toast{position:fixed;right:18px;bottom:18px;background:#1A237E;color:#fff;padding:10px 14px;border-radius:10px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,.18)}.toast.error{background:var(--bad)}.toast.success{background:var(--ok)}
     .error-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;z-index:99}.error-card{background:#fff;border-radius:12px;border:.5px solid var(--bd);box-shadow:0 10px 30px rgba(0,0,0,.12);max-width:520px;padding:26px;text-align:center}.error-card h2{color:var(--bad);margin-bottom:8px}
@@ -70,7 +72,12 @@ firebase.initializeApp({
 });
 const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
-const PAYMS_BUILD='20260703.1';
+// Same Cloud Run endpoint the Wiki's PMO project-document uploads use - shared
+// backend, same Firebase project, so requests here follow the identical
+// contract (action:'uploadProjectDoc') rather than a new/duplicate service.
+const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
+const MAX_RECEIPT_BYTES=15*1024*1024;
+const PAYMS_BUILD='20260706.1';
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
 let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{}},activeTab='dashboard',selectedPaymentId='';
 
@@ -199,14 +206,20 @@ function renderNew(){
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='updesh'||norm(u.username)==='pratim');
   const mappedManager=managerRecordFromSetting(currentSubmitterManager());
   const mappedValue=mappedManager?(mappedManager.username||mappedManager.fullName):'';
-  const managerOptions=(mappedManager?[mappedManager]:managers).map(u=>`<option value="${esc(u.username||u.fullName)}">${esc(u.fullName||u.username)} (${esc(u.role||'user')})</option>`).join('')||'<option value="">No reporting manager mapped</option>';
+  const managerField=mappedManager
+    ?`<input type="hidden" id="f-manager" value="${esc(mappedValue)}"><div style="padding:8px 10px;border:1px solid var(--bd);border-radius:7px;background:#fafafa;font-size:12.5px;font-weight:600">${esc(userDisplay(mappedManager))}</div><div class="muted" style="margin-top:4px">Auto-assigned by Updesh's settings — no action needed.</div>`
+    :`<select id="f-manager"><option value="">-- Select manager --</option>${managers.map(u=>`<option value="${esc(u.username||u.fullName)}">${esc(u.fullName||u.username)} (${esc(u.role||'user')})</option>`).join('')||'<option value="">No reporting manager mapped</option>'}</select><div class="muted" style="margin-top:4px">No mapped manager found; ask Updesh to configure Settings.</div>`;
   const crmOpts=[...contactsData.map(c=>({type:'Contact',id:c.id,label:c.name||c.company||c.contact||c.id})),...dealsData.map(d=>({type:'Deal',id:d.id,label:d.title||d.dealTitle||d.id}))];
   el('tab-new').innerHTML=`<div class="card"><div class="card-header">Create payment request</div>
-    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleExpenseLinks()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label><select id="f-manager" ${mappedManager?'disabled':''}>${managerOptions}</select><div class="muted" style="margin-top:4px">${mappedManager?'Auto-assigned by Updesh settings.':'No mapped manager found; ask Updesh to configure Settings.'}</div></div></div>
-    <div class="form-row"><div class="form-group"><label class="req">Title</label><input id="f-title" placeholder="Tour advance / vendor invoice"></div><div class="form-group"><label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="f-project-expense" onchange="toggleExpenseLinks()"> Project expense</label><div class="muted">Enable only when this expense belongs to a Wiki project.</div></div><div class="form-group"><label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="f-sales-expense" onchange="toggleExpenseLinks()"> Sales/BD expense</label><div class="muted">Enable only when this expense belongs to a CRM contact/deal.</div></div></div>
+    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleExpenseLinks()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label>${managerField}</div></div>
+    <div class="form-row"><div class="form-group"><label class="req">Title</label><input id="f-title" placeholder="Tour advance / vendor invoice"></div>
+      <label class="check-opt"><input type="checkbox" id="f-project-expense" onchange="toggleExpenseLinks()"><span class="check-txt"><b>Project expense</b><span>Enable only when this expense belongs to a Wiki project.</span></span></label>
+      <label class="check-opt"><input type="checkbox" id="f-sales-expense" onchange="toggleExpenseLinks()"><span class="check-txt"><b>Sales/BD expense</b><span>Enable only when this expense belongs to a CRM contact/deal.</span></span></label>
+    </div>
     <div class="form-row"><div class="form-group"><label id="projectLabel">Wiki Project Link</label><select id="f-project"><option value="">Select project</option>${projectsData.map(p=>`<option value="${p.id}">${esc((p.number||'')+' '+(p.name||p.projName||''))}</option>`).join('')||'<option value="">No projects found</option>'}</select></div><div class="form-group"><label id="crmLabel">CRM Contact / Deal</label><select id="f-crm"><option value="">Select CRM contact/deal</option>${crmOpts.map(o=>`<option value="${o.type}|${o.id}">${o.type}: ${esc(o.label)}</option>`).join('')||'<option value="">CRM ready for expansion</option>'}</select></div></div>
     <div class="form-row"><div class="form-group"><label>Vendor / Payee</label><input id="f-vendor" placeholder="Required for vendor payment"></div><div class="form-group"><label class="req">Purpose / Notes</label><textarea id="f-purpose"></textarea></div></div>
-    <button class="btn primary" onclick="submitRequest()"><i class="ti ti-send"></i>Submit to Reporting Manager</button>
+    <div class="form-row"><div class="form-group"><label>Receipt / Supporting Document <span class="muted" style="text-transform:none;font-weight:400">(optional — uploaded to Google Drive)</span></label><input type="file" id="f-receipt"><div class="muted" id="f-receipt-status" style="margin-top:4px"></div></div></div>
+    <button class="btn primary" id="submitBtn" onclick="submitRequest()"><i class="ti ti-send"></i>Submit to Reporting Manager</button>
   </div>`;toggleExpenseLinks();
 }
 function toggleExpenseLinks(){
@@ -217,6 +230,19 @@ function toggleExpenseLinks(){
   if(ps){ps.disabled=!projectChecked;if(!projectChecked)ps.value='';}
   if(cs){cs.disabled=!salesChecked;if(!salesChecked)cs.value='';}
 }
+async function uploadReceiptToDrive(file,targetFolderId){
+  const fileBase64=await new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result.split(',')[1]);
+    reader.onerror=reject;reader.readAsDataURL(file);
+  });
+  const resp=await fetch(DRIVE_UPLOAD_API_URL,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'uploadProjectDoc',fileName:file.name,mimeType:file.type||'application/octet-stream',fileBase64,targetFolderId,uploadedByName:roleName()})
+  });
+  if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(err.error||'Upload failed')}
+  return resp.json();
+}
 async function submitRequest(){
   const type=g('f-type'),amount=Number(g('f-amount')),title=g('f-title'),projectExpense=!!el('f-project-expense')?.checked,salesBdExpense=!!el('f-sales-expense')?.checked,projectId=projectExpense?g('f-project'):'',crmRaw=salesBdExpense?g('f-crm'):'',vendor=g('f-vendor'),purpose=g('f-purpose'),managerRaw=g('f-manager');
   if(!title||!amount||!purpose)return showToast('Enter title, amount and purpose','error');
@@ -224,26 +250,39 @@ async function submitRequest(){
   if(projectExpense&&!projectId)return showToast('Select Wiki project for Project expense','error');
   if(salesBdExpense&&!crmRaw)return showToast('Select CRM contact/deal for Sales/BD expense','error');
   if(type==='Vendor Payment'&&!vendor)return showToast('Vendor / payee is required for vendor payment','error');
+  const receiptFile=el('f-receipt')?.files?.[0]||null;
+  if(receiptFile&&receiptFile.size>MAX_RECEIPT_BYTES)return showToast(`Receipt exceeds ${MAX_RECEIPT_BYTES/(1024*1024)}MB limit`,'error');
   const [crmType,crmId]=(crmRaw||'|').split('|');const mgr=usersData.find(u=>(u.username||u.fullName)===managerRaw)||{};
   const ref=db.collection(PAYMS_COL).doc();
   const flow=initialWorkflowForManager(mgr);
   const req={requestNo:'PAY-'+ref.id.slice(0,6).toUpperCase(),type,title,amount,projectExpense,salesBdExpense,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}]};
-  await ref.set(req);showToast('Request submitted');switchTab('dashboard');
+  const btn=el('submitBtn');if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i>Submitting...';}
+  try{
+    if(receiptFile){
+      const statusEl=el('f-receipt-status');if(statusEl)statusEl.textContent='Uploading to Google Drive...';
+      const targetFolderId=projectExpense&&projectId?(projectsData.find(p=>p.id===projectId)?.driveFolderId||''):(paymsSettings.generalReceiptsFolderId||'');
+      if(!targetFolderId){
+        showToast('No Drive folder available for this receipt (project has none yet, or Updesh hasn\'t set a general receipts folder in Settings) - submitting without attachment','error');
+      }else{
+        const data=await uploadReceiptToDrive(receiptFile,targetFolderId);
+        req.receipt={fileName:data.fileName,webViewLink:data.webViewLink,uploadedByName:roleName(),uploadedAt:nowIso(),sizeKB:Math.round((data.sizeBytes||receiptFile.size||0)/1024)};
+      }
+    }
+    await ref.set(req);showToast('Request submitted');switchTab('dashboard');
+  }catch(e){
+    showToast('Receipt upload failed: '+e.message+' - request not submitted, please retry','error');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i>Submit to Reporting Manager';}
+  }
 }
 function requestTable(list,actions){
   if(!list.length)return'<div class="empty">No payment requests found.</div>';
-  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div></td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td><button class="btn sm primary" onclick="approveRequest('${r.id}')">Approve</button> <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
+  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div>${r.receipt?.webViewLink?`<div style="margin-top:2px"><a href="${esc(r.receipt.webViewLink)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> ${esc(r.receipt.fileName||'Receipt')}</a></div>`:''}</td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td>${actionButtons(r)}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
 function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(paymsData.filter(r=>r.status!=='PAID'),false)}</div>`}
+function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`}
 async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
 async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
-
-function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`}
-function requestTable(list,actions){
-  if(!list.length)return'<div class="empty">No payment requests found.</div>';
-  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div></td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td>${actionButtons(r)}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
-}
-async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
 async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];await db.collection(PAYMS_COL).doc(id).update({status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),audit});showToast('Request referred to Pratim')}
 
 function renderPayments(){const list=paymsData.filter(r=>['READY_FOR_PAYMENT','PAID'].includes(r.status));const selected=paymsData.find(r=>r.id===selectedPaymentId)||list.find(r=>r.status==='READY_FOR_PAYMENT')||list[0];selectedPaymentId=selected?.id||'';el('tab-payments').innerHTML=`<div class="card"><div class="card-header">Approved expenses for Dev</div>${paymentTable(list)}</div><div class="card"><div class="card-header">Record payment</div>${selected?paymentForm(selected):'<div class="empty">No approved request is ready for payment.</div>'}</div>`;paymentMethodChanged()}
@@ -258,7 +297,11 @@ function renderSettings(){
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='pratim'||norm(u.username)==='updesh');
   const users=usersData.filter(u=>norm(u.username)!=='updesh'&&!norm(u.fullName).includes('updesh')&&norm(u.username)!=='pratim'&&!norm(u.fullName).includes('pratim'));
   const map=paymsSettings.reportingManagers||{};
-  tab.innerHTML=`<div class="card"><div class="card-header">PayMS approval hierarchy <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
+  tab.innerHTML=`<div class="card"><div class="card-header">Receipt uploads <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
+    <div class="form-group"><label>General Receipts Drive Folder ID</label><input id="s-general-folder" value="${esc(paymsSettings.generalReceiptsFolderId||'')}" placeholder="Paste the Drive folder ID (from its URL) here"></div>
+    <div class="muted">Used for any receipt attached to a request that isn't linked to a specific Wiki project (Tour Advance, general Reimbursement, etc.) — project-linked expenses automatically use that project's own Drive folder instead. To get a folder ID: open the folder in Google Drive and copy the string after <code>/folders/</code> in its URL.</div>
+  </div>
+  <div class="card"><div class="card-header">PayMS approval hierarchy</div>
     <div style="background:var(--pl);border-radius:8px;padding:11px 12px;margin-bottom:12px;font-size:12px;line-height:1.6">
       <b>Approval chain:</b> Submitter -> Reporting Manager -> Pratim -> Updesh -> Dev payment.<br>
       Direct reports to Pratim start at Pratim. Direct reports to Updesh start at Updesh, with an optional referral to Pratim.
@@ -280,8 +323,9 @@ async function savePaymsSettings(){
     const mgr=usersData.find(u=>norm(u.username)===norm(managerVal)||norm(u.fullName)===norm(managerVal));
     if(managerVal)reportingManagers[userKeyVal]={username:mgr?.username||managerVal,fullName:mgr?.fullName||managerVal,role:mgr?.role||'manager'};
   });
-  await db.collection(SETTINGS_COL).doc('hierarchy').set({reportingManagers,pratim:{username:'pratim',fullName:'Pratim'},updesh:{username:'updesh',fullName:'Updesh'},updatedAt:nowIso(),updatedBy:currentUser,updatedByName:roleName()},{merge:true});
-  showToast('PayMS reporting hierarchy saved');
+  const generalReceiptsFolderId=g('s-general-folder');
+  await db.collection(SETTINGS_COL).doc('hierarchy').set({reportingManagers,generalReceiptsFolderId,pratim:{username:'pratim',fullName:'Pratim'},updesh:{username:'updesh',fullName:'Updesh'},updatedAt:nowIso(),updatedBy:currentUser,updatedByName:roleName()},{merge:true});
+  showToast('PayMS settings saved');
 }
 
 window.addEventListener('load',initializeAuth);
