@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -47,7 +48,6 @@
     <button class="tab-btn" data-tab="approvals" onclick="switchTab('approvals')"><i class="ti ti-checkup-list"></i>Approvals</button>
     <button class="tab-btn" data-tab="payments" onclick="switchTab('payments')"><i class="ti ti-building-bank"></i>Payments</button>
     <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')"><i class="ti ti-history"></i>Audit Trail</button>
-    <button class="tab-btn" data-tab="reports" id="reportsTabBtn" onclick="switchTab('reports')" style="display:none"><i class="ti ti-report"></i>Reports</button>
     <button class="tab-btn" data-tab="settings" id="settingsTabBtn" onclick="switchTab('settings')" style="display:none"><i class="ti ti-settings"></i>Settings</button>
   </div>
 
@@ -56,7 +56,6 @@
   <section id="tab-approvals" class="tab-content"></section>
   <section id="tab-payments" class="tab-content"></section>
   <section id="tab-audit" class="tab-content"></section>
-  <section id="tab-reports" class="tab-content"></section>
   <section id="tab-settings" class="tab-content"></section>
 </div>
 
@@ -71,48 +70,7 @@ firebase.initializeApp({
 });
 const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
-const UPLOAD_RECEIPT_URL='https://upload-receipt-932523956178.asia-south2.run.app';
-const MAX_RECEIPT_BYTES=6*1024*1024;
-function compressImageFile(file,maxWidth=1600,quality=0.72){
-  return new Promise((resolve,reject)=>{
-    const img=new Image();const reader=new FileReader();
-    reader.onload=e=>{img.src=e.target.result};
-    reader.onerror=reject;
-    img.onload=()=>{
-      const scale=Math.min(1,maxWidth/img.width);
-      const canvas=document.createElement('canvas');
-      canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);
-      const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);
-      canvas.toBlob(blob=>resolve(new File([blob],file.name.replace(/\.(png|jpe?g|webp)$/i,'.jpg'),{type:'image/jpeg'})),'image/jpeg',quality);
-    };
-    img.onerror=reject;reader.readAsDataURL(file);
-  });
-}
-function fileToBase64(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>resolve(reader.result.split(',')[1]);
-    reader.onerror=reject;reader.readAsDataURL(file);
-  });
-}
-async function uploadReceiptIfAny(claimId,submitterName){
-  const input=el('f-receipt');
-  if(!input||!input.files||!input.files[0])return null;
-  let file=input.files[0];
-  if(file.size>MAX_RECEIPT_BYTES)throw new Error(`Receipt file is too large (${(file.size/1024/1024).toFixed(1)}MB). Max is 6MB.`);
-  if(/^image\//.test(file.type)&&file.type!=='application/pdf'){
-    try{file=await compressImageFile(file)}catch(e){console.warn('Compression failed, uploading original',e)}
-  }
-  const fileBase64=await fileToBase64(file);
-  const resp=await fetch(UPLOAD_RECEIPT_URL,{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({fileName:file.name,mimeType:file.type||'application/octet-stream',fileBase64,claimId:claimId||'',submitterName:submitterName||''})
-  });
-  if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(err.error||'Receipt upload failed')}
-  const data=await resp.json();
-  return{receiptUrl:data.webViewLink,receiptFileId:data.fileId,receiptFileName:data.fileName,receiptSizeKB:Math.round((data.sizeBytes||0)/1024)};
-}
-const PAYMS_BUILD='20260630.8';
+const PAYMS_BUILD='20260703.1';
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
 let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{}},activeTab='dashboard',selectedPaymentId='';
 
@@ -141,8 +99,14 @@ function initializeAuth(){
   const handoffSession=fragment.get('sess')||query.get('sess');
   const receivedHandoff=!!handoffSession;
   try{sess=sessionStorage.getItem('dqap_sess')}catch(e){}
+  if(!sess){
+    try{
+      const bridge=JSON.parse(localStorage.getItem('dqap_payms_handoff')||'null');
+      if(bridge&&bridge.session&&Date.now()-Number(bridge.ts||0)<10*60*1000)sess=bridge.session;
+    }catch(e){}
+  }
   if(!sess)sess=handoffSession;
-  if(sess){try{sessionStorage.setItem('dqap_sess',sess)}catch(e){} if(receivedHandoff)history.replaceState(null,document.title,window.location.pathname+window.location.search)}
+  if(sess){try{sessionStorage.setItem('dqap_sess',sess);localStorage.setItem('dqap_payms_handoff',JSON.stringify({session:sess,ts:Date.now()}));}catch(e){} if(receivedHandoff)history.replaceState(null,document.title,window.location.pathname+window.location.search)}
   if(!sess){showError('This page must be accessed through the Wiki portal. Please login to Wiki first.');return}
   try{wikiSession=JSON.parse(sess);autoLoginFromWiki(wikiSession)}catch(e){showError('Session error. Please login to Wiki and try again.')}
 }
@@ -159,7 +123,6 @@ async function autoLoginFromWiki(session){
     el('currentUser').textContent=`${currentUserData.displayName||username} (${currentUserRole})`;
     el('appContainer').style.display='block';
     el('settingsTabBtn').style.display=canManageSettings()?'flex':'none';
-    el('reportsTabBtn').style.display=canViewReports()?'flex':'none';
     await loadReferenceData();
     startSettingsListen();
     startPaymsListen();
@@ -190,9 +153,8 @@ function startSettingsListen(){
   },err=>showToast('Could not load PayMS settings: '+err.message,'error'));
 }
 
-function switchTab(tab){if(tab==='settings'&&!canManageSettings())return showToast('Only Updesh can open PayMS settings','error');if(tab==='reports'&&!canViewReports())return showToast('Only Updesh, Pratim and Dev can open Reports','error');activeTab=tab;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));renderAll()}
-function canViewReports(){return isUpdesh()||isDev()||isPratim()}
-function renderAll(){renderDashboard();renderNew();renderApprovals();renderPayments();renderAudit();renderReports();renderSettings()}
+function switchTab(tab){if(tab==='settings'&&!canManageSettings())return showToast('Only Updesh can open PayMS settings','error');activeTab=tab;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));renderAll()}
+function renderAll(){renderDashboard();renderNew();renderApprovals();renderPayments();renderAudit();renderSettings()}
 function statusBadge(s){const map={PENDING_MANAGER:['Manager Verify','s-manager'],PENDING_PRATIM:['Pratim Recommend','s-pratim'],PENDING_UPDESH:['Updesh Approval','s-updesh'],READY_FOR_PAYMENT:['Ready for Dev','s-dev'],PAID:['PAID','s-paid'],REJECTED:['Rejected','s-rej']};const m=map[s]||['Open','s-open'];return`<span class="badge ${m[1]}">${m[0]}</span>`}
 function projectLabel(id){const p=projectsData.find(x=>x.id===id);return p?`${p.number||''} ${p.name||p.projName||''}`.trim():'-'}
 function crmLabel(type,id){const row=(type==='Deal'?dealsData:contactsData).find(x=>x.id===id);return row?(type==='Deal'?(row.title||row.dealTitle||'Deal'):(row.name||row.company||'Contact')):'-'}
@@ -224,42 +186,14 @@ function managerRecordFromSetting(setting){
   return usersData.find(u=>norm(u.username)===norm(setting.username)||norm(u.fullName)===norm(setting.fullName)||norm(u.username)===norm(setting)||norm(u.fullName)===norm(setting))||null;
 }
 
-function computeUserStats(){
-  const map={};
-  usersData.forEach(u=>{
-    const key=u.username||u.fullName;if(!key)return;
-    map[key]={username:key,fullName:u.fullName||u.displayName||u.username,total:0,approved:0,pending:0,rejected:0,advancePaid:0,claimTotal:0};
-  });
-  paymsData.forEach(r=>{
-    const key=r.submitterUsername;if(!key)return;
-    if(!map[key])map[key]={username:key,fullName:r.submitterName||key,total:0,approved:0,pending:0,rejected:0,advancePaid:0,claimTotal:0};
-    map[key].total++;
-    if(r.status==='REJECTED')map[key].rejected++;
-    else if(r.status==='PAID')map[key].approved++;
-    else map[key].pending++;
-    if(r.nature==='ADVANCE'&&r.status==='PAID')map[key].advancePaid+=Number(r.amount||0);
-    if(r.nature!=='ADVANCE')map[key].claimTotal+=Number(r.amount||0);
-  });
-  return Object.values(map).map(u=>({...u,advanceBalance:computeAdvanceLedger(u.username).balance})).filter(u=>u.total>0);
-}
-function userStatsTable(rows){
-  if(!rows.length)return'<div class="empty">No claim activity yet.</div>';
-  return`<div class="table-wrap"><table><thead><tr><th>User</th><th class="right">Total</th><th class="right">Approved</th><th class="right">Pending</th><th class="right">Rejected</th><th class="right">Advance Paid</th><th class="right">Advance Outstanding</th></tr></thead><tbody>${rows.map(u=>`<tr><td class="strong">${esc(u.fullName)}</td><td class="right">${u.total}</td><td class="right">${u.approved}</td><td class="right">${u.pending}</td><td class="right">${u.rejected}</td><td class="right">Rs ${fmtAmt(u.advancePaid)}</td><td class="right strong">Rs ${fmtAmt(u.advanceBalance)}</td></tr>`).join('')}</tbody></table></div>`;
-}
 function renderDashboard(){
   const total=paymsData.length,pending=paymsData.filter(r=>!['PAID','REJECTED'].includes(r.status)).length,ready=paymsData.filter(r=>r.status==='READY_FOR_PAYMENT').length,paid=paymsData.filter(r=>r.status==='PAID').length,amount=paymsData.reduce((s,r)=>s+Number(r.amount||0),0);
-  const myOverdue=paymsData.filter(r=>canApprove(r)&&stageOverdue(r)).length;
-  const allStats=computeUserStats();
-  const canSeeAll=isUpdesh()||isDev()||isPratim();
-  const statsRows=canSeeAll?allStats:allStats.filter(u=>u.username===currentUser);
-  const statsCard=`<div class="card"><div class="card-header">${canSeeAll?'Team Overview':'My Summary'}</div>${userStatsTable(statsRows)}</div>`;
   el('tab-dashboard').innerHTML=`<div class="stats">
     <div class="stat"><div class="stat-icon"><i class="ti ti-file-invoice"></i></div><div><div class="stat-value">${total}</div><div class="stat-label">Requests</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-clock"></i></div><div><div class="stat-value">${pending}</div><div class="stat-label">In workflow</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-building-bank"></i></div><div><div class="stat-value">${ready}</div><div class="stat-label">Ready for Dev</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-currency-rupee"></i></div><div><div class="stat-value">Rs ${fmtAmt(amount)}</div><div class="stat-label">Total value</div></div></div>
-    ${myOverdue?`<div class="stat" style="border-color:#c0392b"><div class="stat-icon" style="color:#c0392b"><i class="ti ti-alert-triangle"></i></div><div><div class="stat-value" style="color:#c0392b">${myOverdue}</div><div class="stat-label">Your overdue approvals</div></div></div>`:''}
-  </div>${statsCard}<div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="switchTab('new')"><i class="ti ti-plus"></i>New</button></div>${requestTable(paymsData.slice(0,10),false)}</div>`;
+  </div><div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="switchTab('new')"><i class="ti ti-plus"></i>New</button></div>${requestTable(paymsData.slice(0,10),false)}</div>`;
 }
 function renderNew(){
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='updesh'||norm(u.username)==='pratim');
@@ -268,178 +202,56 @@ function renderNew(){
   const managerOptions=(mappedManager?[mappedManager]:managers).map(u=>`<option value="${esc(u.username||u.fullName)}">${esc(u.fullName||u.username)} (${esc(u.role||'user')})</option>`).join('')||'<option value="">No reporting manager mapped</option>';
   const crmOpts=[...contactsData.map(c=>({type:'Contact',id:c.id,label:c.name||c.company||c.contact||c.id})),...dealsData.map(d=>({type:'Deal',id:d.id,label:d.title||d.dealTitle||d.id}))];
   el('tab-new').innerHTML=`<div class="card"><div class="card-header">Create payment request</div>
-    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleTourRules()"><option>Tour Advance</option><option>Vendor Payment</option><option>Other</option><option>Misc</option><option>Local Travelling</option><option>Outstation Travel</option></select></div><div class="form-group"><label class="req">Payment Nature</label><select id="f-nature" onchange="toggleTourRules()"><option value="CLAIM">Claim / Reimbursement</option><option value="ADVANCE">Advance Payment</option></select><div class="muted" style="margin-top:4px" id="nature-hint"></div></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1" oninput="updateAdvancePreview()"></div></div>
-    <div class="form-row"><div class="form-group"><label class="req">Reporting Manager</label><select id="f-manager" ${mappedManager?'disabled':''}>${managerOptions}</select><div class="muted" style="margin-top:4px">${mappedManager?'Auto-assigned by Updesh settings.':'No mapped manager found; ask Updesh to configure Settings.'}</div></div><div class="form-group"><label class="req">Title</label><input id="f-title" placeholder="Tour advance / vendor invoice"></div><div class="form-group" id="expdate-group"><label class="req" id="expdate-label">Date Expense Incurred</label><input id="f-expdate" type="date" onchange="updateAdvancePreview()"><div class="muted" style="margin-top:4px">Claims must be filed within 15 days of this date.</div></div></div>
-    <div id="advance-preview" class="muted" style="margin:4px 0 8px"></div>
-    <div class="form-row"><div class="form-group"><label id="projectLabel" class="req">Wiki Project Link</label><select id="f-project">${projectsData.map(p=>`<option value="${p.id}">${esc((p.number||'')+' '+(p.name||p.projName||''))}</option>`).join('')||'<option value="">No projects found</option>'}</select></div><div class="form-group"><label id="crmLabel" class="req">CRM Contact / Deal</label><select id="f-crm">${crmOpts.map(o=>`<option value="${o.type}|${o.id}">${o.type}: ${esc(o.label)}</option>`).join('')||'<option value="">CRM ready for expansion</option>'}</select></div></div>
+    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleExpenseLinks()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label><select id="f-manager" ${mappedManager?'disabled':''}>${managerOptions}</select><div class="muted" style="margin-top:4px">${mappedManager?'Auto-assigned by Updesh settings.':'No mapped manager found; ask Updesh to configure Settings.'}</div></div></div>
+    <div class="form-row"><div class="form-group"><label class="req">Title</label><input id="f-title" placeholder="Tour advance / vendor invoice"></div><div class="form-group"><label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="f-project-expense" onchange="toggleExpenseLinks()"> Project expense</label><div class="muted">Enable only when this expense belongs to a Wiki project.</div></div><div class="form-group"><label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="f-sales-expense" onchange="toggleExpenseLinks()"> Sales/BD expense</label><div class="muted">Enable only when this expense belongs to a CRM contact/deal.</div></div></div>
+    <div class="form-row"><div class="form-group"><label id="projectLabel">Wiki Project Link</label><select id="f-project"><option value="">Select project</option>${projectsData.map(p=>`<option value="${p.id}">${esc((p.number||'')+' '+(p.name||p.projName||''))}</option>`).join('')||'<option value="">No projects found</option>'}</select></div><div class="form-group"><label id="crmLabel">CRM Contact / Deal</label><select id="f-crm"><option value="">Select CRM contact/deal</option>${crmOpts.map(o=>`<option value="${o.type}|${o.id}">${o.type}: ${esc(o.label)}</option>`).join('')||'<option value="">CRM ready for expansion</option>'}</select></div></div>
     <div class="form-row"><div class="form-group"><label>Vendor / Payee</label><input id="f-vendor" placeholder="Required for vendor payment"></div><div class="form-group"><label class="req">Purpose / Notes</label><textarea id="f-purpose"></textarea></div></div>
-    <div class="form-row"><div class="form-group"><label>Receipt / Invoice (PDF, JPG, PNG - max 6MB)</label><input type="file" id="f-receipt" accept=".pdf,.jpg,.jpeg,.png,.webp"><div id="receipt-status" class="muted" style="margin-top:4px"></div></div></div>
-    <button class="btn primary" id="submit-btn" onclick="submitRequest()"><i class="ti ti-send"></i>Submit to Reporting Manager</button>
-  </div>`;toggleTourRules();
+    <button class="btn primary" onclick="submitRequest()"><i class="ti ti-send"></i>Submit to Reporting Manager</button>
+  </div>`;toggleExpenseLinks();
 }
-function toggleTourRules(){
-  const type=g('f-type'),tour=type==='Tour Advance';
-  const p=el('projectLabel'),c=el('crmLabel');if(p)p.className=tour?'req':'';if(c)c.className=tour?'req':'';
-  const natureSel=el('f-nature'),hint=el('nature-hint');
-  if(natureSel){
-    if(type==='Vendor Payment'){natureSel.value='CLAIM';natureSel.disabled=true;if(hint)hint.textContent='Vendor payments are always direct claims, not advances.';}
-    else{natureSel.disabled=false;if(hint)hint.textContent='Advance = money paid to you upfront. Claim = actual expense to be reimbursed / adjusted against advance.';}
-  }
-  const expGroup=el('expdate-group'),expLabel=el('expdate-label'),expInput=el('f-expdate');
-  const isAdvance=g('f-nature')==='ADVANCE'&&type!=='Vendor Payment';
-  if(expGroup){
-    expGroup.style.display=isAdvance?'none':'';
-    if(expLabel)expLabel.className=isAdvance?'':'req';
-    if(expInput&&isAdvance)expInput.value='';
-  }
-  updateAdvancePreview();
-}
-function computeAdvanceLedger(username){
-  const userReqs=paymsData.filter(r=>r.submitterUsername===username).sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
-  let balance=0;const adjustments={};
-  userReqs.forEach(r=>{
-    if(r.nature==='ADVANCE'){
-      if(r.status==='PAID')balance+=Number(r.amount||0);
-    }else if(r.type!=='Vendor Payment'){
-      const claimAmt=Number(r.amount||0),adjust=Math.min(balance,claimAmt);
-      adjustments[r.id]={advanceAdjusted:adjust,netPayable:claimAmt-adjust};
-      if(r.status==='PAID')balance-=adjust;
-    }
-  });
-  return{balance,adjustments};
-}
-function updateAdvancePreview(){
-  const box=el('advance-preview');if(!box)return;
-  const type=g('f-type'),nature=g('f-nature'),amount=Number(g('f-amount')||0);
-  if(nature==='ADVANCE'||type==='Vendor Payment'){box.innerHTML='';return}
-  const ledger=computeAdvanceLedger(currentUser);
-  if(ledger.balance<=0&&!amount){box.innerHTML='';return}
-  if(!amount){box.innerHTML=`Your current advance balance: <b>Rs ${fmtAmt(ledger.balance)}</b>. This will be adjusted against the claim amount once entered.`;return}
-  const adjust=Math.min(ledger.balance,amount),net=amount-adjust;
-  box.innerHTML=`Your current advance balance: <b>Rs ${fmtAmt(ledger.balance)}</b>. Estimated adjustment against this claim: <b>Rs ${fmtAmt(adjust)}</b>. Estimated net payable: <b>Rs ${fmtAmt(net)}</b>.`;
-}
-function daysBetween(iso){if(!iso)return null;return Math.floor((Date.now()-new Date(iso).getTime())/86400000)}
-function stageOverdue(r){if(['PAID','REJECTED'].includes(r.status))return false;const d=daysBetween(r.stageEnteredAt||r.createdAt);return d!==null&&d>=5}
-function slaBreached(r){if(['READY_FOR_PAYMENT','PAID','REJECTED'].includes(r.status))return false;const d=daysBetween(r.createdAt);return d!==null&&d>14}
-function slaBadge(r){
-  if(['PAID','REJECTED'].includes(r.status))return'';
-  if(slaBreached(r))return`<span class="badge s-rej" title="More than 14 days since submission, still not approved">SLA breached (${daysBetween(r.createdAt)}d)</span>`;
-  if(stageOverdue(r))return`<span class="badge s-rej" title="5+ days at current approval stage without action">Action overdue (${daysBetween(r.stageEnteredAt||r.createdAt)}d at stage)</span>`;
-  return'';
+function toggleExpenseLinks(){
+  const projectChecked=!!el('f-project-expense')?.checked,salesChecked=!!el('f-sales-expense')?.checked;
+  const p=el('projectLabel'),c=el('crmLabel'),ps=el('f-project'),cs=el('f-crm');
+  if(p)p.className=projectChecked?'req':'';
+  if(c)c.className=salesChecked?'req':'';
+  if(ps){ps.disabled=!projectChecked;if(!projectChecked)ps.value='';}
+  if(cs){cs.disabled=!salesChecked;if(!salesChecked)cs.value='';}
 }
 async function submitRequest(){
-  const type=g('f-type'),nature=type==='Vendor Payment'?'CLAIM':(g('f-nature')||'CLAIM'),amount=Number(g('f-amount')),title=g('f-title'),projectId=g('f-project'),crmRaw=g('f-crm'),vendor=g('f-vendor'),purpose=g('f-purpose'),managerRaw=g('f-manager'),expenseDate=g('f-expdate');
+  const type=g('f-type'),amount=Number(g('f-amount')),title=g('f-title'),projectExpense=!!el('f-project-expense')?.checked,salesBdExpense=!!el('f-sales-expense')?.checked,projectId=projectExpense?g('f-project'):'',crmRaw=salesBdExpense?g('f-crm'):'',vendor=g('f-vendor'),purpose=g('f-purpose'),managerRaw=g('f-manager');
   if(!title||!amount||!purpose)return showToast('Enter title, amount and purpose','error');
   if(!managerRaw)return showToast('Reporting manager is not mapped. Ask Updesh to configure PayMS Settings.','error');
-  if(nature==='CLAIM'){
-    if(!expenseDate)return showToast('Enter the date the expense was incurred','error');
-    const daysSince=daysBetween(new Date(expenseDate).toISOString());
-    if(daysSince<0)return showToast('Expense date cannot be in the future','error');
-    if(daysSince>15)return showToast(`This expense was incurred ${daysSince} days ago. PayMS only accepts claims filed within 15 days of the expense date — this submission cannot be accepted.`,'error');
-  }
-  if(type==='Tour Advance'&&(!projectId||!crmRaw))return showToast('Tour Advance requires Wiki project and CRM contact/deal linkage','error');
+  if(projectExpense&&!projectId)return showToast('Select Wiki project for Project expense','error');
+  if(salesBdExpense&&!crmRaw)return showToast('Select CRM contact/deal for Sales/BD expense','error');
   if(type==='Vendor Payment'&&!vendor)return showToast('Vendor / payee is required for vendor payment','error');
   const [crmType,crmId]=(crmRaw||'|').split('|');const mgr=usersData.find(u=>(u.username||u.fullName)===managerRaw)||{};
   const ref=db.collection(PAYMS_COL).doc();
-  const claimId='PAY-'+ref.id.slice(0,6).toUpperCase();
   const flow=initialWorkflowForManager(mgr);
-  const btn=el('submit-btn'),statusEl=el('receipt-status');
-  let receiptFields={};
-  try{
-    if(el('f-receipt')&&el('f-receipt').files&&el('f-receipt').files[0]){
-      if(btn)btn.disabled=true;
-      if(statusEl)statusEl.textContent='Uploading receipt...';
-      receiptFields=await uploadReceiptIfAny(claimId,roleName())||{};
-      if(statusEl)statusEl.textContent=receiptFields.receiptFileName?'Receipt attached: '+receiptFields.receiptFileName:'';
-    }
-  }catch(e){
-    if(btn)btn.disabled=false;
-    return showToast(e.message||'Receipt upload failed','error');
-  }
-  const req={requestNo:claimId,type,nature,expenseDate:nature==='CLAIM'?expenseDate:null,advanceBalanceAtSubmission:computeAdvanceLedger(currentUser).balance,title,amount,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),stageEnteredAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}],...receiptFields};
-  await ref.set(req);if(btn)btn.disabled=false;showToast('Request submitted');switchTab('dashboard');
+  const req={requestNo:'PAY-'+ref.id.slice(0,6).toUpperCase(),type,title,amount,projectExpense,salesBdExpense,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}]};
+  await ref.set(req);showToast('Request submitted');switchTab('dashboard');
 }
-function renderApprovals(){const queue=paymsData.filter(canApprove);const overdue=paymsData.filter(r=>canApprove(r)&&stageOverdue(r));el('tab-approvals').innerHTML=`${overdue.length?`<div class="card" style="border-color:#c0392b"><div class="card-header" style="color:#c0392b"><i class="ti ti-alert-triangle"></i> Action needed - overdue (${overdue.length})</div>${requestTable(overdue,true)}</div>`:''}<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(paymsData.filter(r=>r.status!=='PAID'),false)}</div>`}
-async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
-
-function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';const receipt=r.receiptUrl?` <a class="btn sm" href="${esc(r.receiptUrl)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> View Receipt</a>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>${receipt}`}
 function requestTable(list,actions){
   if(!list.length)return'<div class="empty">No payment requests found.</div>';
-  return`<div class="table-wrap"><table><thead><tr><th>Claim ID</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>{const ledger=r.nature!=='ADVANCE'&&r.type!=='Vendor Payment'?computeAdvanceLedger(r.submitterUsername):null;const adj=ledger?(ledger.adjustments[r.id]||{advanceAdjusted:0,netPayable:Number(r.amount||0)}):null;return`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.nature==='ADVANCE'?' · Advance':''}${r.vendor?' · '+esc(r.vendor):''}</div>${r.receiptUrl?`<div class="muted"><a href="${esc(r.receiptUrl)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> Receipt</a></div>`:''}</td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}${adj&&adj.advanceAdjusted>0?`<div class="muted" style="font-weight:normal">Net: Rs ${fmtAmt(adj.netPayable)}</div>`:''}</td><td>${statusBadge(r.status)} ${slaBadge(r)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td>${actionButtons(r)}</td>`:''}</tr>`}).join('')}</tbody></table></div>`;
+  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div></td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td><button class="btn sm primary" onclick="approveRequest('${r.id}')">Approve</button> <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
-async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),stageEnteredAt:nowIso(),audit});showToast(action)}
-async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];await db.collection(PAYMS_COL).doc(id).update({status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),stageEnteredAt:nowIso(),audit});showToast('Request referred to Pratim')}
+function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(paymsData.filter(r=>r.status!=='PAID'),false)}</div>`}
+async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
+async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
+
+function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`}
+function requestTable(list,actions){
+  if(!list.length)return'<div class="empty">No payment requests found.</div>';
+  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div></td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td>${actionButtons(r)}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
+}
+async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
+async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];await db.collection(PAYMS_COL).doc(id).update({status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),audit});showToast('Request referred to Pratim')}
 
 function renderPayments(){const list=paymsData.filter(r=>['READY_FOR_PAYMENT','PAID'].includes(r.status));const selected=paymsData.find(r=>r.id===selectedPaymentId)||list.find(r=>r.status==='READY_FOR_PAYMENT')||list[0];selectedPaymentId=selected?.id||'';el('tab-payments').innerHTML=`<div class="card"><div class="card-header">Approved expenses for Dev</div>${paymentTable(list)}</div><div class="card"><div class="card-header">Record payment</div>${selected?paymentForm(selected):'<div class="empty">No approved request is ready for payment.</div>'}</div>`;paymentMethodChanged()}
-function paymentTable(list){if(!list.length)return'<div class="empty">No Updesh-approved payment requests.</div>';return`<div class="table-wrap"><table><thead><tr><th>Claim ID</th><th>Request</th><th class="right">Amount</th><th>Status</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(r.requestNo||r.id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.type)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td><button class="btn sm" onclick="selectedPaymentId='${r.id}';renderPayments()">Open</button></td></tr>`).join('')}</tbody></table></div>`}
-function paymentForm(r){
-  const disabled=r.status==='PAID'||!isDev()?'disabled':'';
-  const ledger=computeAdvanceLedger(r.submitterUsername);
-  const adj=ledger.adjustments[r.id]||{advanceAdjusted:0,netPayable:Number(r.amount||0)};
-  const ledgerBox=r.nature==='ADVANCE'
-    ?`<div class="muted" style="margin-bottom:10px">This is an <b>Advance Payment</b>. Once recorded as PAID, Rs ${fmtAmt(r.amount)} will be added to ${esc(r.submitterName)}'s advance balance for future adjustment.</div>`
-    :(r.type!=='Vendor Payment'?`<div class="muted" style="margin-bottom:10px">Claim amount: <b>Rs ${fmtAmt(r.amount)}</b> · Advance adjusted: <b>Rs ${fmtAmt(adj.advanceAdjusted)}</b> · Net payable: <b>Rs ${fmtAmt(adj.netPayable)}</b> · ${esc(r.submitterName)}'s advance balance before this payment: <b>Rs ${fmtAmt(ledger.balance)}</b></div>`:'');
-  return`${ledgerBox}<div class="form-row"><div class="form-group"><label>Method</label><select id="pay-method" onchange="paymentMethodChanged()" ${disabled}><option>Bank Transfer</option><option>Cheque</option><option>Cash</option></select></div><div class="form-group"><label>Payment Date</label><input id="pay-date" type="date" value="${today()}" ${disabled}></div><div class="form-group bank-field"><label>Bank</label><input id="pay-bank" value="YES Bank" ${disabled}></div><div class="form-group utr-field"><label>UTR</label><input id="pay-utr" value="UTR202406300001" ${disabled}></div><div class="form-group cheque-field hidden"><label>Cheque Number</label><input id="pay-cheque" ${disabled}></div><div class="form-group"><label>Notes</label><textarea id="pay-notes" ${disabled}></textarea></div></div>${r.status==='PAID'?'<span class="badge s-paid">Status: PAID</span>':`<button class="btn ok" onclick="recordPayment('${r.id}')" ${disabled}><i class="ti ti-check"></i>Record Payment & Complete</button>`}${!isDev()?'<div class="muted" style="margin-top:8px">Only Dev / admin can record payment.</div>':''}`;
-}
+function paymentTable(list){if(!list.length)return'<div class="empty">No Updesh-approved payment requests.</div>';return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th class="right">Amount</th><th>Status</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(r.requestNo||r.id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.type)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td><button class="btn sm" onclick="selectedPaymentId='${r.id}';renderPayments()">Open</button></td></tr>`).join('')}</tbody></table></div>`}
+function paymentForm(r){const disabled=r.status==='PAID'||!isDev()?'disabled':'';return`<div class="form-row"><div class="form-group"><label>Method</label><select id="pay-method" onchange="paymentMethodChanged()" ${disabled}><option>Bank Transfer</option><option>Cheque</option><option>Cash</option></select></div><div class="form-group"><label>Payment Date</label><input id="pay-date" type="date" value="${today()}" ${disabled}></div><div class="form-group bank-field"><label>Bank</label><input id="pay-bank" value="YES Bank" ${disabled}></div><div class="form-group utr-field"><label>UTR</label><input id="pay-utr" value="UTR202406300001" ${disabled}></div><div class="form-group cheque-field hidden"><label>Cheque Number</label><input id="pay-cheque" ${disabled}></div><div class="form-group"><label>Notes</label><textarea id="pay-notes" ${disabled}></textarea></div></div>${r.status==='PAID'?'<span class="badge s-paid">Status: PAID</span>':`<button class="btn ok" onclick="recordPayment('${r.id}')" ${disabled}><i class="ti ti-check"></i>Record Payment & Complete</button>`}${!isDev()?'<div class="muted" style="margin-top:8px">Only Dev / admin can record payment.</div>':''}`}
 function paymentMethodChanged(){const m=g('pay-method');document.querySelectorAll('.bank-field').forEach(x=>x.classList.toggle('hidden',m==='Cash'));document.querySelectorAll('.utr-field').forEach(x=>x.classList.toggle('hidden',m!=='Bank Transfer'));document.querySelectorAll('.cheque-field').forEach(x=>x.classList.toggle('hidden',m!=='Cheque'))}
-async function recordPayment(id){const r=paymsData.find(x=>x.id===id);if(!r||r.status!=='READY_FOR_PAYMENT')return showToast('Only ready-for-payment requests can be recorded','error');if(!isDev())return showToast('Switch to Dev finance user','error');const method=g('pay-method'),date=g('pay-date'),bank=g('pay-bank'),utr=g('pay-utr'),cheque=g('pay-cheque'),notes=g('pay-notes');if(method==='Bank Transfer'&&(!date||!bank||!utr))return showToast('Bank Transfer requires date, bank and UTR','error');if(method==='Cheque'&&(!date||!bank||!cheque))return showToast('Cheque requires date, bank and cheque number','error');if(method==='Cash'&&(!date||!notes))return showToast('Cash requires date and notes','error');const payment={method,date,bank,utr,cheque,notes,recordedBy:currentUser,recordedByName:roleName(),recordedAt:nowIso()};const ledger=computeAdvanceLedger(r.submitterUsername);const adj=ledger.adjustments[r.id]||{advanceAdjusted:0,netPayable:Number(r.amount||0)};const ledgerFields=r.nature==='ADVANCE'?{}:{advanceAdjusted:adj.advanceAdjusted,netPayable:adj.netPayable};const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:`Recorded ${method} payment. Status PAID`}];await db.collection(PAYMS_COL).doc(id).update({payment,status:'PAID',updatedAt:nowIso(),audit,...ledgerFields});showToast('Status -> PAID')}
+async function recordPayment(id){const r=paymsData.find(x=>x.id===id);if(!r||r.status!=='READY_FOR_PAYMENT')return showToast('Only ready-for-payment requests can be recorded','error');if(!isDev())return showToast('Switch to Dev finance user','error');const method=g('pay-method'),date=g('pay-date'),bank=g('pay-bank'),utr=g('pay-utr'),cheque=g('pay-cheque'),notes=g('pay-notes');if(method==='Bank Transfer'&&(!date||!bank||!utr))return showToast('Bank Transfer requires date, bank and UTR','error');if(method==='Cheque'&&(!date||!bank||!cheque))return showToast('Cheque requires date, bank and cheque number','error');if(method==='Cash'&&(!date||!notes))return showToast('Cash requires date and notes','error');const payment={method,date,bank,utr,cheque,notes,recordedBy:currentUser,recordedByName:roleName(),recordedAt:nowIso()};const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:`Recorded ${method} payment. Status PAID`}];await db.collection(PAYMS_COL).doc(id).update({payment,status:'PAID',updatedAt:nowIso(),audit});showToast('Status -> PAID')}
 function renderAudit(){const rows=paymsData.flatMap(r=>(r.audit||[]).map(a=>({...a,requestNo:r.requestNo||r.id,title:r.title}))).sort((a,b)=>String(b.time).localeCompare(String(a.time)));el('tab-audit').innerHTML=`<div class="card"><div class="card-header">Automatic audit trail</div>${rows.length?rows.map(a=>`<div class="audit-row"><div class="muted">${esc(new Date(a.time).toLocaleString('en-IN'))}</div><div><b>${esc(a.requestNo)}</b><div class="muted">${esc(a.actor)}</div></div><div>${esc(a.action)}<div class="muted">${esc(a.title||'')}</div></div></div>`).join(''):'<div class="empty">No audit records yet.</div>'}</div>`}
-let reportFY='ALL',reportQuarter='ALL';
-function fyOf(dateStr){const d=new Date(dateStr);if(isNaN(d))return null;const m=d.getMonth(),y=d.getFullYear(),startYear=m>=3?y:y-1;return`FY${String(startYear).slice(2)}-${String(startYear+1).slice(2)}`}
-function quarterOf(dateStr){const d=new Date(dateStr);if(isNaN(d))return null;const m=d.getMonth();if(m>=3&&m<=5)return'Q1';if(m>=6&&m<=8)return'Q2';if(m>=9&&m<=11)return'Q3';return'Q4'}
-function availableFYs(){const set=new Set(paymsData.map(r=>fyOf(r.createdAt)).filter(Boolean));const arr=[...set].sort().reverse();return arr.length?arr:[fyOf(nowIso())]}
-function computeReportRows(fy,quarter){
-  const filtered=paymsData.filter(r=>{
-    if(fy&&fy!=='ALL'&&fyOf(r.createdAt)!==fy)return false;
-    if(quarter&&quarter!=='ALL'&&quarterOf(r.createdAt)!==quarter)return false;
-    return true;
-  });
-  const map={};
-  filtered.forEach(r=>{
-    const key=r.submitterUsername;if(!key)return;
-    if(!map[key])map[key]={username:key,fullName:r.submitterName||key,total:0,approved:0,pending:0,rejected:0,advanceTaken:0,claimAmount:0,netPaid:0};
-    map[key].total++;
-    if(r.status==='REJECTED')map[key].rejected++;
-    else if(r.status==='PAID')map[key].approved++;
-    else map[key].pending++;
-    if(r.nature==='ADVANCE'){if(r.status==='PAID')map[key].advanceTaken+=Number(r.amount||0);}
-    else{map[key].claimAmount+=Number(r.amount||0);if(r.status==='PAID')map[key].netPaid+=Number(r.netPayable!=null?r.netPayable:r.amount||0);}
-  });
-  return Object.values(map).map(u=>({...u,outstandingAdvance:computeAdvanceLedger(u.username).balance})).sort((a,b)=>a.fullName.localeCompare(b.fullName));
-}
-function reportTable(rows){
-  if(!rows.length)return'<div class="empty">No claims in this period.</div>';
-  return`<div class="table-wrap"><table><thead><tr><th>User</th><th class="right">Total Claims</th><th class="right">Approved</th><th class="right">Pending</th><th class="right">Rejected</th><th class="right">Advance Taken</th><th class="right">Paid Out</th><th class="right">Advance Outstanding</th></tr></thead><tbody>${rows.map(u=>`<tr><td class="strong">${esc(u.fullName)}</td><td class="right">${u.total}</td><td class="right">${u.approved}</td><td class="right">${u.pending}</td><td class="right">${u.rejected}</td><td class="right">Rs ${fmtAmt(u.advanceTaken)}</td><td class="right">Rs ${fmtAmt(u.netPaid)}</td><td class="right strong">Rs ${fmtAmt(u.outstandingAdvance)}</td></tr>`).join('')}</tbody></table></div>`;
-}
-function renderReports(){
-  if(!el('tab-reports'))return;
-  if(!canViewReports()){el('tab-reports').innerHTML='';return}
-  const fys=availableFYs(),rows=computeReportRows(reportFY,reportQuarter);
-  const totalClaims=rows.reduce((s,u)=>s+u.total,0),totalAdvance=rows.reduce((s,u)=>s+u.advanceTaken,0),totalPaid=rows.reduce((s,u)=>s+u.netPaid,0),totalOutstanding=rows.reduce((s,u)=>s+u.outstandingAdvance,0);
-  el('tab-reports').innerHTML=`<div class="card"><div class="card-header">Claims Report <button class="btn sm primary" onclick="exportReportCSV()"><i class="ti ti-download"></i>Export CSV</button></div>
-    <div class="form-row">
-      <div class="form-group"><label>Financial Year</label><select id="rpt-fy" onchange="reportFY=g('rpt-fy');renderReports()"><option value="ALL" ${reportFY==='ALL'?'selected':''}>All Years</option>${fys.map(fy=>`<option value="${fy}" ${reportFY===fy?'selected':''}>${fy}</option>`).join('')}</select></div>
-      <div class="form-group"><label>Quarter</label><select id="rpt-q" onchange="reportQuarter=g('rpt-q');renderReports()"><option value="ALL" ${reportQuarter==='ALL'?'selected':''}>All Quarters</option><option value="Q1" ${reportQuarter==='Q1'?'selected':''}>Q1 (Apr-Jun)</option><option value="Q2" ${reportQuarter==='Q2'?'selected':''}>Q2 (Jul-Sep)</option><option value="Q3" ${reportQuarter==='Q3'?'selected':''}>Q3 (Oct-Dec)</option><option value="Q4" ${reportQuarter==='Q4'?'selected':''}>Q4 (Jan-Mar)</option></select></div>
-    </div>
-    <div class="stats" style="margin-top:10px">
-      <div class="stat"><div class="stat-icon"><i class="ti ti-file-invoice"></i></div><div><div class="stat-value">${totalClaims}</div><div class="stat-label">Claims filed</div></div></div>
-      <div class="stat"><div class="stat-icon"><i class="ti ti-cash"></i></div><div><div class="stat-value">Rs ${fmtAmt(totalAdvance)}</div><div class="stat-label">Advance taken</div></div></div>
-      <div class="stat"><div class="stat-icon"><i class="ti ti-check"></i></div><div><div class="stat-value">Rs ${fmtAmt(totalPaid)}</div><div class="stat-label">Paid out</div></div></div>
-      <div class="stat"><div class="stat-icon"><i class="ti ti-alert-circle"></i></div><div><div class="stat-value">Rs ${fmtAmt(totalOutstanding)}</div><div class="stat-label">Advance outstanding</div></div></div>
-    </div>
-    <div style="margin-top:14px">${reportTable(rows)}</div>
-  </div>`;
-}
-function exportReportCSV(){
-  const rows=computeReportRows(reportFY,reportQuarter);
-  const header=['User','Total Claims','Approved','Pending','Rejected','Advance Taken','Paid Out','Advance Outstanding'];
-  const csvRows=[header.join(',')];
-  rows.forEach(u=>{csvRows.push([`"${(u.fullName||'').replace(/"/g,'""')}"`,u.total,u.approved,u.pending,u.rejected,u.advanceTaken,u.netPaid,u.outstandingAdvance].join(','))});
-  const blob=new Blob([csvRows.join('\n')],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=`PayMS_Report_${reportFY}_${reportQuarter}_${today()}.csv`;
-  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-}
 function renderSettings(){
   const tab=el('tab-settings');if(!tab)return;
   if(!canManageSettings()){tab.innerHTML='';return;}
