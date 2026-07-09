@@ -93,7 +93,7 @@ function isUser(name){return norm(currentUser)===norm(name)||norm(currentUserDat
 function isAdmin(){return ['admin','tech_admin'].includes(norm(currentUserRole))||norm(currentUser)==='updesh'}
 function isDev(){return norm(currentUser)==='dev'||norm(currentUserData?.fullName)==='dev'||isAdmin()}
 function isPratim(){return norm(currentUser)==='pratim'||norm(currentUserData?.fullName).includes('pratim')||isAdmin()}
-function isUpdesh(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh')||isAdmin()}
+function isUpdesh(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh');}
 function canManageSettings(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh')}
 function showToast(msg,type='success'){const t=document.createElement('div');t.className='toast '+(type==='error'?'error':'success');t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200)}
 function showError(message){const d=document.createElement('div');d.className='error-screen';d.innerHTML=`<div class="error-card"><h2>PayMS Access</h2><p style="color:var(--t2);line-height:1.6">${esc(message)}</p><button class="btn primary" style="margin-top:16px" onclick="location.href='https://dqapsys.github.io/dqap-wiki/'">Go to Wiki</button></div>`;document.body.appendChild(d);el('appContainer').style.display='none'}
