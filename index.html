@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -31,7 +32,7 @@
     input[type="checkbox"],input[type="radio"]{width:16px;height:16px;padding:0;margin:0;flex-shrink:0;accent-color:var(--p);background:none;border:none}
     .check-opt{display:flex;align-items:flex-start;gap:8px;padding:9px 11px;border:1px solid var(--bd);border-radius:8px;background:#fafafa;cursor:pointer}.check-opt input{margin-top:2px}.check-opt .check-txt{display:flex;flex-direction:column;gap:2px}.check-opt .check-txt b{font-size:12.5px;font-weight:700}.check-opt .check-txt span{font-size:10.5px;color:var(--t2);text-transform:none;letter-spacing:normal;font-weight:400}
     .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}.form-group label{display:block;font-size:10.5px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}.req::after{content:' *';color:var(--bad)}
-    .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;white-space:nowrap}.s-manager{background:#FFF3E0;color:#E65100}.s-pratim{background:#E3F2FD;color:#006994}.s-updesh{background:#F3E5F5;color:#6A1B9A}.s-dev{background:#E8F5E9;color:#1B5E20}.s-paid{background:#E8F5E9;color:#1B5E20}.s-rej{background:#FFEBEE;color:#B71C1C}.s-open{background:#ECEFF1;color:#455A64}
+    .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;white-space:nowrap}.s-manager{background:#FFF3E0;color:#E65100}.s-pratim{background:#E3F2FD;color:#006994}.s-updesh{background:#F3E5F5;color:#6A1B9A}.s-dev{background:#E8F5E9;color:#1B5E20}.s-paid{background:#E8F5E9;color:#1B5E20}.s-rej{background:#FFEBEE;color:#B71C1C}.s-withdrawn{background:#ECEFF1;color:#455A64}.s-open{background:#ECEFF1;color:#455A64}
     .muted{color:var(--t2);font-size:11px}.strong{font-weight:700}.right{text-align:right}.hidden{display:none!important}.empty{text-align:center;color:var(--t2);padding:30px 12px}.audit-row{display:grid;grid-template-columns:145px 150px 1fr;gap:10px;border-bottom:.5px solid var(--bd);padding:9px 0}.toast{position:fixed;right:18px;bottom:18px;background:#1A237E;color:#fff;padding:10px 14px;border-radius:10px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,.18)}.toast.error{background:var(--bad)}.toast.success{background:var(--ok)}
     .error-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;z-index:99}.error-card{background:#fff;border-radius:12px;border:.5px solid var(--bd);box-shadow:0 10px 30px rgba(0,0,0,.12);max-width:520px;padding:26px;text-align:center}.error-card h2{color:var(--bad);margin-bottom:8px}
     @media(max-width:720px){.container{padding:12px}.header{align-items:flex-start;flex-direction:column}.audit-row{grid-template-columns:1fr}.tabs{gap:6px}.tab-btn{padding:8px 10px}.card{padding:12px}.card-header{margin:-12px -12px 12px;padding:10px 12px}}
@@ -46,7 +47,7 @@
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')"><i class="ti ti-layout-dashboard"></i>Dashboard</button>
-    <button class="tab-btn" data-tab="new" onclick="switchTab('new')"><i class="ti ti-plus"></i>New Request</button>
+    <button class="tab-btn" data-tab="new" onclick="startNewRequest()"><i class="ti ti-plus"></i>New Request</button>
     <button class="tab-btn" data-tab="approvals" onclick="switchTab('approvals')"><i class="ti ti-checkup-list"></i>Approvals</button>
     <button class="tab-btn" data-tab="payments" onclick="switchTab('payments')"><i class="ti ti-building-bank"></i>Payments</button>
     <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')"><i class="ti ti-history"></i>Audit Trail</button>
@@ -74,9 +75,9 @@ const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
 const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
 const MAX_RECEIPT_BYTES=15*1024*1024;
-const PAYMS_BUILD='20260706.1';
+const PAYMS_BUILD='20260715.1';
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
-let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{}},activeTab='dashboard',selectedPaymentId='';
+let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{}},activeTab='dashboard',selectedPaymentId='',editingRequestId='';
 
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function el(id){return document.getElementById(id)}
@@ -159,7 +160,10 @@ function startSettingsListen(){
 
 function switchTab(tab){if(tab==='settings'&&!canManageSettings())return showToast('Only Updesh can open PayMS settings','error');activeTab=tab;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));renderAll()}
 function renderAll(){renderDashboard();renderNew();renderApprovals();renderPayments();renderAudit();renderSettings()}
-function statusBadge(s){const map={PENDING_MANAGER:['Manager Verify','s-manager'],PENDING_PRATIM:['Pratim Recommend','s-pratim'],PENDING_UPDESH:['Updesh Approval','s-updesh'],READY_FOR_PAYMENT:['Ready for Dev','s-dev'],PAID:['PAID','s-paid'],REJECTED:['Rejected','s-rej']};const m=map[s]||['Open','s-open'];return`<span class="badge ${m[1]}">${m[0]}</span>`}
+function statusBadge(s){const map={PENDING_MANAGER:['Manager Verify','s-manager'],PENDING_PRATIM:['Pratim Recommend','s-pratim'],PENDING_UPDESH:['Updesh Approval','s-updesh'],READY_FOR_PAYMENT:['Ready for Dev','s-dev'],PAID:['PAID','s-paid'],REJECTED:['Rejected','s-rej'],WITHDRAWN_BY_USER:['Withdrawn by User','s-withdrawn']};const m=map[s]||['Open','s-open'];return`<span class="badge ${m[1]}">${m[0]}</span>`}
+function isPendingStatus(s){return['PENDING_MANAGER','PENDING_PRATIM','PENDING_UPDESH'].includes(s)}
+function isOwnRequest(r){const mine=currentUserKeys();return[norm(r?.submitterUsername),norm(r?.submitterName)].filter(Boolean).some(k=>mine.includes(k))}
+function canEditRequest(r){return!!r&&isOwnRequest(r)&&isPendingStatus(r.status)}
 function projectLabel(id){const p=projectsData.find(x=>x.id===id);return p?`${p.number||''} ${p.name||p.projName||''}`.trim():'-'}
 function crmLabel(type,id){const row=(type==='Deal'?dealsData:contactsData).find(x=>x.id===id);return row?(type==='Deal'?(row.title||row.dealTitle||'Deal'):(row.name||row.company||'Contact')):'-'}
 function isPratimValue(v){return norm(v)==='pratim'||norm(v).includes('pratim')}
@@ -235,15 +239,19 @@ function visiblePaymsData(){
 
 function renderDashboard(){
   const scoped=visiblePaymsData();
-  const total=scoped.length,pending=scoped.filter(r=>!['PAID','REJECTED'].includes(r.status)).length,ready=scoped.filter(r=>r.status==='READY_FOR_PAYMENT').length,paid=scoped.filter(r=>r.status==='PAID').length,amount=scoped.reduce((s,r)=>s+Number(r.amount||0),0);
+  const myPending=paymsData.filter(canEditRequest);
+  const total=scoped.length,pending=scoped.filter(r=>isPendingStatus(r.status)).length,ready=scoped.filter(r=>r.status==='READY_FOR_PAYMENT').length,paid=scoped.filter(r=>r.status==='PAID').length,amount=scoped.filter(r=>r.status!=='WITHDRAWN_BY_USER').reduce((s,r)=>s+Number(r.amount||0),0);
   el('tab-dashboard').innerHTML=`<div class="stats">
     <div class="stat"><div class="stat-icon"><i class="ti ti-file-invoice"></i></div><div><div class="stat-value">${total}</div><div class="stat-label">Requests</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-clock"></i></div><div><div class="stat-value">${pending}</div><div class="stat-label">In workflow</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-building-bank"></i></div><div><div class="stat-value">${ready}</div><div class="stat-label">Ready for Dev</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-currency-rupee"></i></div><div><div class="stat-value">Rs ${fmtAmt(amount)}</div><div class="stat-label">Total value</div></div></div>
-  </div><div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="switchTab('new')"><i class="ti ti-plus"></i>New</button></div>${requestTable(scoped.slice(0,10),false)}</div>`;
+  </div><div class="card"><div class="card-header">My pending claims <span class="muted">Edit is available until approval is completed</span></div>${requestTable(myPending,false,true)}</div><div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="startNewRequest()"><i class="ti ti-plus"></i>New</button></div>${requestTable(scoped.slice(0,10),false)}</div>`;
 }
 function renderNew(){
+  const candidate=paymsData.find(r=>r.id===editingRequestId);
+  if(editingRequestId&&!canEditRequest(candidate))editingRequestId='';
+  const source=canEditRequest(candidate)?candidate:null;
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='updesh'||norm(u.username)==='pratim');
   const mappedManager=managerRecordFromSetting(currentSubmitterManager());
   const mappedValue=mappedManager?(mappedManager.username||mappedManager.fullName):'';
@@ -261,8 +269,24 @@ function renderNew(){
     <div class="form-row"><div class="form-group"><label>Vendor / Payee</label><input id="f-vendor" placeholder="Required for vendor payment"></div><div class="form-group"><label class="req">Purpose / Notes</label><textarea id="f-purpose"></textarea></div></div>
     <div class="form-row"><div class="form-group"><label>Receipt / Supporting Document <span class="muted" style="text-transform:none;font-weight:400">(optional — uploaded to Google Drive)</span></label><input type="file" id="f-receipt"><div class="muted" id="f-receipt-status" style="margin-top:4px"></div></div></div>
     <button class="btn primary" id="submitBtn" onclick="submitRequest()"><i class="ti ti-send"></i>Submit to Reporting Manager</button>
-  </div>`;toggleExpenseLinks();
+  </div>`;
+  if(source){
+    const header=el('tab-new').querySelector('.card-header');
+    if(header)header.innerHTML=`<span>Edit & resubmit ${esc(source.requestNo||source.id)}</span><button class="btn sm" onclick="cancelEditRequest()">Cancel edit</button>`;
+    const notice=document.createElement('div');notice.style.cssText='background:#FFF3E0;border-radius:8px;padding:11px 12px;margin-bottom:12px;font-size:12px;line-height:1.6';notice.innerHTML='<b>Resubmission creates a fresh claim ID.</b> The existing claim remains in the audit trail as <b>Withdrawn by User</b>, and approval restarts from the beginning.';
+    header?.insertAdjacentElement('afterend',notice);
+    el('f-type').value=source.type||'Tour Advance';el('f-amount').value=source.amount||'';el('f-title').value=source.title||'';
+    el('f-project-expense').checked=!!source.projectExpense;el('f-sales-expense').checked=!!source.salesBdExpense;
+    el('f-project').value=source.projectId||'';el('f-crm').value=source.crmType&&source.crmId?`${source.crmType}|${source.crmId}`:'';
+    el('f-vendor').value=source.vendor||'';el('f-purpose').value=source.purpose||'';
+    if(source.receipt?.fileName)el('f-receipt-status').textContent=`Current: ${source.receipt.fileName} (choose a file only to replace it)`;
+    el('submitBtn').innerHTML='<i class="ti ti-send"></i>Withdraw & Resubmit';
+  }
+  toggleExpenseLinks();
 }
+function startNewRequest(){editingRequestId='';switchTab('new')}
+function editAndResubmit(id){const r=paymsData.find(x=>x.id===id);if(!canEditRequest(r))return showToast('Only your own pending claim can be edited','error');editingRequestId=id;switchTab('new')}
+function cancelEditRequest(){editingRequestId='';switchTab('dashboard')}
 function toggleExpenseLinks(){
   const projectChecked=!!el('f-project-expense')?.checked,salesChecked=!!el('f-sales-expense')?.checked;
   const p=el('projectLabel'),c=el('crmLabel'),ps=el('f-project'),cs=el('f-crm');
@@ -288,6 +312,8 @@ async function uploadReceiptToDrive(file,options){
   return resp.json();
 }
 async function submitRequest(){
+  const source=editingRequestId?paymsData.find(r=>r.id===editingRequestId):null;
+  if(editingRequestId&&!canEditRequest(source))return showToast('This claim is no longer pending and cannot be edited','error');
   const type=g('f-type'),amount=Number(g('f-amount')),title=g('f-title'),projectExpense=!!el('f-project-expense')?.checked,salesBdExpense=!!el('f-sales-expense')?.checked,projectId=projectExpense?g('f-project'):'',crmRaw=salesBdExpense?g('f-crm'):'',vendor=g('f-vendor'),purpose=g('f-purpose'),managerRaw=g('f-manager');
   if(!title||!amount||!purpose)return showToast('Enter title, amount and purpose','error');
   if(!managerRaw)return showToast('Reporting manager is not mapped. Ask Updesh to configure PayMS Settings.','error');
@@ -300,7 +326,8 @@ async function submitRequest(){
   const ref=db.collection(PAYMS_COL).doc();
   const requestNo='PAY-'+ref.id.slice(0,6).toUpperCase();
   const flow=initialWorkflowForManager(mgr);
-  const req={requestNo,type,title,amount,projectExpense,salesBdExpense,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}]};
+  const req={requestNo,type,title,amount,projectExpense,salesBdExpense,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:source?`Resubmitted from ${source.requestNo||source.id} with a fresh claim ID; ${flow.audit}`:flow.audit}]};
+  if(source){req.supersedesClaimId=source.id;req.supersedesRequestNo=source.requestNo||source.id;req.resubmissionNumber=Number(source.resubmissionNumber||0)+1;if(source.receipt)req.receipt=source.receipt;}
   const btn=el('submitBtn');if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i>Submitting...';}
   try{
     if(receiptFile){
@@ -314,18 +341,32 @@ async function submitRequest(){
       const data=await uploadReceiptToDrive(receiptFile,projectFolderId?{targetFolderId:projectFolderId}:{claimId:requestNo});
       req.receipt={fileName:data.fileName,webViewLink:data.webViewLink,uploadedByName:roleName(),uploadedAt:nowIso(),sizeKB:Math.round((data.sizeBytes||receiptFile.size||0)/1024)};
     }
-    await ref.set(req);showToast('Request submitted');switchTab('dashboard');
+    if(source){
+      const oldRef=db.collection(PAYMS_COL).doc(source.id);
+      await db.runTransaction(async tx=>{
+        const oldSnap=await tx.get(oldRef);
+        if(!oldSnap.exists)throw new Error('Original claim no longer exists');
+        const latest={id:oldSnap.id,...oldSnap.data()};
+        if(!canEditRequest(latest))throw new Error('Original claim is no longer pending or does not belong to you');
+        const changedAt=nowIso(),oldAudit=[...(latest.audit||[]),{time:changedAt,actor:roleName(),action:`Withdrawn by User for correction and resubmitted as ${requestNo}`}];
+        tx.update(oldRef,{status:'WITHDRAWN_BY_USER',withdrawnAt:changedAt,withdrawnBy:currentUser,withdrawnByName:roleName(),supersededByClaimId:ref.id,supersededByRequestNo:requestNo,updatedAt:changedAt,audit:oldAudit});
+        tx.set(ref,req);
+      });
+      editingRequestId='';showToast(`Claim withdrawn and resubmitted as ${requestNo}`);
+    }else{await ref.set(req);showToast('Request submitted');}
+    switchTab('dashboard');
   }catch(e){
-    showToast('Receipt upload failed: '+e.message+' - request not submitted, please retry','error');
+    showToast('Request not submitted: '+e.message+'. Please retry.','error');
   }finally{
     if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i>Submit to Reporting Manager';}
   }
 }
-function requestTable(list,actions){
+function requestTable(list,actions,ownerActions=false){
   if(!list.length)return'<div class="empty">No payment requests found.</div>';
-  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div>${r.receipt?.webViewLink?`<div style="margin-top:2px"><a href="${esc(r.receipt.webViewLink)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> ${esc(r.receipt.fileName||'Receipt')}</a></div>`:''}</td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td>${actionButtons(r)}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
+  const showAction=actions||ownerActions;
+  return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${showAction?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div>${r.receipt?.webViewLink?`<div style="margin-top:2px"><a href="${esc(r.receipt.webViewLink)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> ${esc(r.receipt.fileName||'Receipt')}</a></div>`:''}</td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${showAction?`<td>${actions?actionButtons(r):''}${ownerActions&&canEditRequest(r)?`<button class="btn sm" onclick="editAndResubmit('${r.id}')"><i class="ti ti-edit"></i>Edit & Resubmit</button>`:''}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
-function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(visiblePaymsData().filter(r=>r.status!=='PAID'),false)}</div>`}
+function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(visiblePaymsData().filter(r=>isPendingStatus(r.status)||r.status==='READY_FOR_PAYMENT'),false)}</div>`}
 function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`}
 async function approveRequest(id){
   const r=paymsData.find(x=>x.id===id);
@@ -333,12 +374,13 @@ async function approveRequest(id){
   const action=actionLabel(r.status);
   const confirmMsg=`${action}?\n\nRequest: ${r.requestNo||r.id}\nTitle: ${r.title}\nAmount: Rs ${fmtAmt(r.amount)}\nSubmitted by: ${r.submitterName||r.submitterUsername}`;
   if(!confirm(confirmMsg))return;
-  const status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];
-  await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});
-  showToast(action);
+  try{
+    await db.runTransaction(async tx=>{const ref=db.collection(PAYMS_COL).doc(id),snap=await tx.get(ref);if(!snap.exists)throw new Error('Claim no longer exists');const latest={id:snap.id,...snap.data()};if(latest.status!==r.status||!canApprove(latest))throw new Error('Claim changed and is no longer available for this approval');const audit=[...(latest.audit||[]),{time:nowIso(),actor:roleName(),action}];tx.update(ref,{status:nextStatus(latest.status),updatedAt:nowIso(),audit})});
+    showToast(action);
+  }catch(e){showToast(e.message,'error')}
 }
-async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
-async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];await db.collection(PAYMS_COL).doc(id).update({status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),audit});showToast('Request referred to Pratim')}
+async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('Claim is no longer available for rejection','error');try{await db.runTransaction(async tx=>{const ref=db.collection(PAYMS_COL).doc(id),snap=await tx.get(ref);if(!snap.exists)throw new Error('Claim no longer exists');const latest={id:snap.id,...snap.data()};if(latest.status!==r.status||!canApprove(latest))throw new Error('Claim changed and is no longer available for rejection');const audit=[...(latest.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];tx.update(ref,{status:'REJECTED',updatedAt:nowIso(),audit})});showToast('Request rejected','error')}catch(e){showToast(e.message,'error')}}
+async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');try{await db.runTransaction(async tx=>{const ref=db.collection(PAYMS_COL).doc(id),snap=await tx.get(ref);if(!snap.exists)throw new Error('Claim no longer exists');const latest={id:snap.id,...snap.data()};if(latest.status!==r.status||!canReferToPratim(latest))throw new Error('Claim changed and can no longer be referred');const audit=[...(latest.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];tx.update(ref,{status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),audit})});showToast('Request referred to Pratim')}catch(e){showToast(e.message,'error')}}
 
 function renderPayments(){const scoped=visiblePaymsData();const list=scoped.filter(r=>['READY_FOR_PAYMENT','PAID'].includes(r.status));const selected=scoped.find(r=>r.id===selectedPaymentId)||list.find(r=>r.status==='READY_FOR_PAYMENT')||list[0];selectedPaymentId=selected?.id||'';el('tab-payments').innerHTML=`<div class="card"><div class="card-header">Approved expenses for Dev</div>${paymentTable(list)}</div><div class="card"><div class="card-header">Record payment</div>${selected?paymentForm(selected):'<div class="empty">No approved request is ready for payment.</div>'}</div>`;paymentMethodChanged()}
 function paymentTable(list){if(!list.length)return'<div class="empty">No Updesh-approved payment requests.</div>';return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th class="right">Amount</th><th>Status</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(r.requestNo||r.id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.type)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td><button class="btn sm" onclick="selectedPaymentId='${r.id}';renderPayments()">Open</button></td></tr>`).join('')}</tbody></table></div>`}
