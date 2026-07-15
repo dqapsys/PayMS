@@ -271,15 +271,18 @@ function toggleExpenseLinks(){
   if(ps){ps.disabled=!projectChecked;if(!projectChecked)ps.value='';}
   if(cs){cs.disabled=!salesChecked;if(!salesChecked)cs.value='';}
 }
-async function uploadReceiptToDrive(file,targetFolderId){
+async function uploadReceiptToDrive(file,options){
   const fileBase64=await new Promise((resolve,reject)=>{
     const reader=new FileReader();
     reader.onload=()=>resolve(reader.result.split(',')[1]);
     reader.onerror=reject;reader.readAsDataURL(file);
   });
+  const body=options.targetFolderId
+    ?{action:'uploadProjectDoc',fileName:file.name,mimeType:file.type||'application/octet-stream',fileBase64,targetFolderId:options.targetFolderId,uploadedByName:roleName()}
+    :{action:'uploadReceipt',fileName:file.name,mimeType:file.type||'application/octet-stream',fileBase64,claimId:options.claimId,submitterName:roleName()};
   const resp=await fetch(DRIVE_UPLOAD_API_URL,{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({action:'uploadProjectDoc',fileName:file.name,mimeType:file.type||'application/octet-stream',fileBase64,targetFolderId,uploadedByName:roleName()})
+    body:JSON.stringify(body)
   });
   if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(err.error||'Upload failed')}
   return resp.json();
@@ -295,19 +298,20 @@ async function submitRequest(){
   if(receiptFile&&receiptFile.size>MAX_RECEIPT_BYTES)return showToast(`Receipt exceeds ${MAX_RECEIPT_BYTES/(1024*1024)}MB limit`,'error');
   const [crmType,crmId]=(crmRaw||'|').split('|');const mgr=usersData.find(u=>(u.username||u.fullName)===managerRaw)||{};
   const ref=db.collection(PAYMS_COL).doc();
+  const requestNo='PAY-'+ref.id.slice(0,6).toUpperCase();
   const flow=initialWorkflowForManager(mgr);
-  const req={requestNo:'PAY-'+ref.id.slice(0,6).toUpperCase(),type,title,amount,projectExpense,salesBdExpense,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}]};
+  const req={requestNo,type,title,amount,projectExpense,salesBdExpense,projectId,crmType,crmId,vendor,purpose,status:flow.status,submitterUsername:currentUser,submitterName:roleName(),managerUsername:mgr.username||managerRaw,managerName:mgr.fullName||managerRaw,createdAt:nowIso(),updatedAt:nowIso(),audit:[{time:nowIso(),actor:roleName(),action:flow.audit}]};
   const btn=el('submitBtn');if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i>Submitting...';}
   try{
     if(receiptFile){
       const statusEl=el('f-receipt-status');if(statusEl)statusEl.textContent='Uploading to Google Drive...';
-      const targetFolderId=projectExpense&&projectId?(projectsData.find(p=>p.id===projectId)?.driveFolderId||''):(paymsSettings.generalReceiptsFolderId||'');
-      if(!targetFolderId){
-        showToast('No Drive folder is set up for this receipt yet (project has none, or Updesh hasn\'t set a general receipts folder in Settings). Ask Updesh to configure this, or remove the attachment and submit without it.','error');
+      const projectFolderId=projectExpense&&projectId?(projectsData.find(p=>p.id===projectId)?.driveFolderId||''):'';
+      if(projectExpense&&projectId&&!projectFolderId){
+        showToast('This project has no Drive folder yet. Ask Updesh to create it from PMO in Wiki, or remove the attachment and submit without it.','error');
         if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i>Submit to Reporting Manager';}
         return;
       }
-      const data=await uploadReceiptToDrive(receiptFile,targetFolderId);
+      const data=await uploadReceiptToDrive(receiptFile,projectFolderId?{targetFolderId:projectFolderId}:{claimId:requestNo});
       req.receipt={fileName:data.fileName,webViewLink:data.webViewLink,uploadedByName:roleName(),uploadedAt:nowIso(),sizeKB:Math.round((data.sizeBytes||receiptFile.size||0)/1024)};
     }
     await ref.set(req);showToast('Request submitted');switchTab('dashboard');
@@ -348,11 +352,7 @@ function renderSettings(){
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='pratim'||norm(u.username)==='updesh');
   const users=usersData.filter(u=>norm(u.username)!=='updesh'&&!norm(u.fullName).includes('updesh')&&norm(u.username)!=='pratim'&&!norm(u.fullName).includes('pratim'));
   const map=paymsSettings.reportingManagers||{};
-  tab.innerHTML=`<div class="card"><div class="card-header">Receipt uploads <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
-    <div class="form-group"><label>General Receipts Drive Folder ID</label><input id="s-general-folder" value="${esc(paymsSettings.generalReceiptsFolderId||'')}" placeholder="Paste the Drive folder ID (from its URL) here"></div>
-    <div class="muted">Used for any receipt attached to a request that isn't linked to a specific Wiki project (Tour Advance, general Reimbursement, etc.) — project-linked expenses automatically use that project's own Drive folder instead. To get a folder ID: open the folder in Google Drive and copy the string after <code>/folders/</code> in its URL.</div>
-  </div>
-  <div class="card"><div class="card-header">PayMS approval hierarchy</div>
+  tab.innerHTML=`<div class="card"><div class="card-header">PayMS approval hierarchy <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
     <div style="background:var(--pl);border-radius:8px;padding:11px 12px;margin-bottom:12px;font-size:12px;line-height:1.6">
       <b>Approval chain:</b> Submitter -> Reporting Manager -> Pratim -> Updesh -> Dev payment.<br>
       Direct reports to Pratim start at Pratim. Direct reports to Updesh start at Updesh, with an optional referral to Pratim.
@@ -374,8 +374,7 @@ async function savePaymsSettings(){
     const mgr=usersData.find(u=>norm(u.username)===norm(managerVal)||norm(u.fullName)===norm(managerVal));
     if(managerVal)reportingManagers[userKeyVal]={username:mgr?.username||managerVal,fullName:mgr?.fullName||managerVal,role:mgr?.role||'manager'};
   });
-  const generalReceiptsFolderId=g('s-general-folder');
-  await db.collection(SETTINGS_COL).doc('hierarchy').set({reportingManagers,generalReceiptsFolderId,pratim:{username:'pratim',fullName:'Pratim'},updesh:{username:'updesh',fullName:'Updesh'},updatedAt:nowIso(),updatedBy:currentUser,updatedByName:roleName()},{merge:true});
+  await db.collection(SETTINGS_COL).doc('hierarchy').set({reportingManagers,pratim:{username:'pratim',fullName:'Pratim'},updesh:{username:'updesh',fullName:'Updesh'},updatedAt:nowIso(),updatedBy:currentUser,updatedByName:roleName()},{merge:true});
   showToast('PayMS settings saved');
 }
 
