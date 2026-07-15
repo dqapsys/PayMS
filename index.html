@@ -72,9 +72,6 @@ firebase.initializeApp({
 });
 const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
-// Same Cloud Run endpoint the Wiki's PMO project-document uploads use - shared
-// backend, same Firebase project, so requests here follow the identical
-// contract (action:'uploadProjectDoc') rather than a new/duplicate service.
 const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
 const MAX_RECEIPT_BYTES=15*1024*1024;
 const PAYMS_BUILD='20260706.1';
@@ -192,15 +189,59 @@ function managerRecordFromSetting(setting){
   if(!setting)return null;
   return usersData.find(u=>norm(u.username)===norm(setting.username)||norm(u.fullName)===norm(setting.fullName)||norm(u.username)===norm(setting)||norm(u.fullName)===norm(setting))||null;
 }
+function currentUserKeys(){return[norm(currentUser),norm(currentUserData?.fullName)].filter(Boolean)}
+function canSeeAllRequests(){return isUpdesh()||isDev()||isPratim()}
+function directReportKeysOf(managerIdentityKeys){
+  const map=paymsSettings.reportingManagers||{};
+  const found=new Set();
+  Object.keys(map).forEach(subKey=>{
+    const mgr=map[subKey];
+    const mgrKeys=[norm(mgr?.username),norm(mgr?.fullName)].filter(Boolean);
+    if(mgrKeys.some(k=>managerIdentityKeys.includes(k)))found.add(subKey);
+  });
+  return found;
+}
+function allReportKeysRecursive(rootIdentityKeys){
+  // Walks the FULL chain underneath the given person - direct reports, their
+  // reports, and so on - not just one level. Guarded against cycles/depth.
+  const visitedSubKeys=new Set();
+  const seenIdentity=new Set(rootIdentityKeys);
+  let frontier=[...rootIdentityKeys];
+  let guard=0;
+  while(frontier.length&&guard<25){
+    guard++;
+    const directSubKeys=[...directReportKeysOf(frontier)].filter(k=>!visitedSubKeys.has(k));
+    if(!directSubKeys.length)break;
+    const nextFrontier=[];
+    directSubKeys.forEach(subKey=>{
+      visitedSubKeys.add(subKey);
+      const userRec=usersData.find(u=>userKey(u)===subKey);
+      const idKeys=userRec?[norm(userRec.username),norm(userRec.fullName)].filter(Boolean):[subKey];
+      idKeys.forEach(k=>{if(!seenIdentity.has(k)){seenIdentity.add(k);nextFrontier.push(k);}});
+    });
+    frontier=nextFrontier;
+  }
+  return visitedSubKeys;
+}
+function visiblePaymsData(){
+  if(canSeeAllRequests())return paymsData;
+  const myKeys=currentUserKeys();
+  const allReports=allReportKeysRecursive(myKeys);
+  return paymsData.filter(r=>{
+    const submitterKeys=[norm(r.submitterUsername),norm(r.submitterName)].filter(Boolean);
+    return submitterKeys.some(k=>myKeys.includes(k))||submitterKeys.some(k=>allReports.has(k));
+  });
+}
 
 function renderDashboard(){
-  const total=paymsData.length,pending=paymsData.filter(r=>!['PAID','REJECTED'].includes(r.status)).length,ready=paymsData.filter(r=>r.status==='READY_FOR_PAYMENT').length,paid=paymsData.filter(r=>r.status==='PAID').length,amount=paymsData.reduce((s,r)=>s+Number(r.amount||0),0);
+  const scoped=visiblePaymsData();
+  const total=scoped.length,pending=scoped.filter(r=>!['PAID','REJECTED'].includes(r.status)).length,ready=scoped.filter(r=>r.status==='READY_FOR_PAYMENT').length,paid=scoped.filter(r=>r.status==='PAID').length,amount=scoped.reduce((s,r)=>s+Number(r.amount||0),0);
   el('tab-dashboard').innerHTML=`<div class="stats">
     <div class="stat"><div class="stat-icon"><i class="ti ti-file-invoice"></i></div><div><div class="stat-value">${total}</div><div class="stat-label">Requests</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-clock"></i></div><div><div class="stat-value">${pending}</div><div class="stat-label">In workflow</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-building-bank"></i></div><div><div class="stat-value">${ready}</div><div class="stat-label">Ready for Dev</div></div></div>
     <div class="stat"><div class="stat-icon"><i class="ti ti-currency-rupee"></i></div><div><div class="stat-value">Rs ${fmtAmt(amount)}</div><div class="stat-label">Total value</div></div></div>
-  </div><div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="switchTab('new')"><i class="ti ti-plus"></i>New</button></div>${requestTable(paymsData.slice(0,10),false)}</div>`;
+  </div><div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="switchTab('new')"><i class="ti ti-plus"></i>New</button></div>${requestTable(scoped.slice(0,10),false)}</div>`;
 }
 function renderNew(){
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='updesh'||norm(u.username)==='pratim');
@@ -279,18 +320,18 @@ function requestTable(list,actions){
   if(!list.length)return'<div class="empty">No payment requests found.</div>';
   return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th>Links</th><th>Submitter</th><th class="right">Amount</th><th>Status</th><th>Updated</th>${actions?'<th>Action</th>':''}</tr></thead><tbody>${list.map(r=>`<tr><td class="strong">${esc(r.requestNo||r.id)}</td><td><b>${esc(r.title)}</b><div class="muted">${esc(r.type)}${r.vendor?' · '+esc(r.vendor):''}</div>${r.receipt?.webViewLink?`<div style="margin-top:2px"><a href="${esc(r.receipt.webViewLink)}" target="_blank" rel="noopener"><i class="ti ti-paperclip"></i> ${esc(r.receipt.fileName||'Receipt')}</a></div>`:''}</td><td>${esc(projectLabel(r.projectId))}<div class="muted">${esc(r.crmType||'CRM')}: ${esc(crmLabel(r.crmType,r.crmId))}</div></td><td>${esc(r.submitterName||r.submitterUsername)}<div class="muted">Mgr: ${esc(r.managerName||r.managerUsername)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td>${esc((r.updatedAt||'').slice(0,10))}</td>${actions?`<td>${actionButtons(r)}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
-function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(paymsData.filter(r=>r.status!=='PAID'),false)}</div>`}
+function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(visiblePaymsData().filter(r=>r.status!=='PAID'),false)}</div>`}
 function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`}
 async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
 async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
 async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];await db.collection(PAYMS_COL).doc(id).update({status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),audit});showToast('Request referred to Pratim')}
 
-function renderPayments(){const list=paymsData.filter(r=>['READY_FOR_PAYMENT','PAID'].includes(r.status));const selected=paymsData.find(r=>r.id===selectedPaymentId)||list.find(r=>r.status==='READY_FOR_PAYMENT')||list[0];selectedPaymentId=selected?.id||'';el('tab-payments').innerHTML=`<div class="card"><div class="card-header">Approved expenses for Dev</div>${paymentTable(list)}</div><div class="card"><div class="card-header">Record payment</div>${selected?paymentForm(selected):'<div class="empty">No approved request is ready for payment.</div>'}</div>`;paymentMethodChanged()}
+function renderPayments(){const scoped=visiblePaymsData();const list=scoped.filter(r=>['READY_FOR_PAYMENT','PAID'].includes(r.status));const selected=scoped.find(r=>r.id===selectedPaymentId)||list.find(r=>r.status==='READY_FOR_PAYMENT')||list[0];selectedPaymentId=selected?.id||'';el('tab-payments').innerHTML=`<div class="card"><div class="card-header">Approved expenses for Dev</div>${paymentTable(list)}</div><div class="card"><div class="card-header">Record payment</div>${selected?paymentForm(selected):'<div class="empty">No approved request is ready for payment.</div>'}</div>`;paymentMethodChanged()}
 function paymentTable(list){if(!list.length)return'<div class="empty">No Updesh-approved payment requests.</div>';return`<div class="table-wrap"><table><thead><tr><th>No.</th><th>Request</th><th class="right">Amount</th><th>Status</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(r.requestNo||r.id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.type)}</div></td><td class="right strong">Rs ${fmtAmt(r.amount)}</td><td>${statusBadge(r.status)}</td><td><button class="btn sm" onclick="selectedPaymentId='${r.id}';renderPayments()">Open</button></td></tr>`).join('')}</tbody></table></div>`}
 function paymentForm(r){const disabled=r.status==='PAID'||!isDev()?'disabled':'';return`<div class="form-row"><div class="form-group"><label>Method</label><select id="pay-method" onchange="paymentMethodChanged()" ${disabled}><option>Bank Transfer</option><option>Cheque</option><option>Cash</option></select></div><div class="form-group"><label>Payment Date</label><input id="pay-date" type="date" value="${today()}" ${disabled}></div><div class="form-group bank-field"><label>Bank</label><input id="pay-bank" value="YES Bank" ${disabled}></div><div class="form-group utr-field"><label>UTR</label><input id="pay-utr" value="UTR202406300001" ${disabled}></div><div class="form-group cheque-field hidden"><label>Cheque Number</label><input id="pay-cheque" ${disabled}></div><div class="form-group"><label>Notes</label><textarea id="pay-notes" ${disabled}></textarea></div></div>${r.status==='PAID'?'<span class="badge s-paid">Status: PAID</span>':`<button class="btn ok" onclick="recordPayment('${r.id}')" ${disabled}><i class="ti ti-check"></i>Record Payment & Complete</button>`}${!isDev()?'<div class="muted" style="margin-top:8px">Only Dev / admin can record payment.</div>':''}`}
 function paymentMethodChanged(){const m=g('pay-method');document.querySelectorAll('.bank-field').forEach(x=>x.classList.toggle('hidden',m==='Cash'));document.querySelectorAll('.utr-field').forEach(x=>x.classList.toggle('hidden',m!=='Bank Transfer'));document.querySelectorAll('.cheque-field').forEach(x=>x.classList.toggle('hidden',m!=='Cheque'))}
 async function recordPayment(id){const r=paymsData.find(x=>x.id===id);if(!r||r.status!=='READY_FOR_PAYMENT')return showToast('Only ready-for-payment requests can be recorded','error');if(!isDev())return showToast('Switch to Dev finance user','error');const method=g('pay-method'),date=g('pay-date'),bank=g('pay-bank'),utr=g('pay-utr'),cheque=g('pay-cheque'),notes=g('pay-notes');if(method==='Bank Transfer'&&(!date||!bank||!utr))return showToast('Bank Transfer requires date, bank and UTR','error');if(method==='Cheque'&&(!date||!bank||!cheque))return showToast('Cheque requires date, bank and cheque number','error');if(method==='Cash'&&(!date||!notes))return showToast('Cash requires date and notes','error');const payment={method,date,bank,utr,cheque,notes,recordedBy:currentUser,recordedByName:roleName(),recordedAt:nowIso()};const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:`Recorded ${method} payment. Status PAID`}];await db.collection(PAYMS_COL).doc(id).update({payment,status:'PAID',updatedAt:nowIso(),audit});showToast('Status -> PAID')}
-function renderAudit(){const rows=paymsData.flatMap(r=>(r.audit||[]).map(a=>({...a,requestNo:r.requestNo||r.id,title:r.title}))).sort((a,b)=>String(b.time).localeCompare(String(a.time)));el('tab-audit').innerHTML=`<div class="card"><div class="card-header">Automatic audit trail</div>${rows.length?rows.map(a=>`<div class="audit-row"><div class="muted">${esc(new Date(a.time).toLocaleString('en-IN'))}</div><div><b>${esc(a.requestNo)}</b><div class="muted">${esc(a.actor)}</div></div><div>${esc(a.action)}<div class="muted">${esc(a.title||'')}</div></div></div>`).join(''):'<div class="empty">No audit records yet.</div>'}</div>`}
+function renderAudit(){const rows=visiblePaymsData().flatMap(r=>(r.audit||[]).map(a=>({...a,requestNo:r.requestNo||r.id,title:r.title}))).sort((a,b)=>String(b.time).localeCompare(String(a.time)));el('tab-audit').innerHTML=`<div class="card"><div class="card-header">Automatic audit trail</div>${rows.length?rows.map(a=>`<div class="audit-row"><div class="muted">${esc(new Date(a.time).toLocaleString('en-IN'))}</div><div><b>${esc(a.requestNo)}</b><div class="muted">${esc(a.actor)}</div></div><div>${esc(a.action)}<div class="muted">${esc(a.title||'')}</div></div></div>`).join(''):'<div class="empty">No audit records yet.</div>'}</div>`}
 function renderSettings(){
   const tab=el('tab-settings');if(!tab)return;
   if(!canManageSettings()){tab.innerHTML='';return;}
