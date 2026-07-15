@@ -303,11 +303,12 @@ async function submitRequest(){
       const statusEl=el('f-receipt-status');if(statusEl)statusEl.textContent='Uploading to Google Drive...';
       const targetFolderId=projectExpense&&projectId?(projectsData.find(p=>p.id===projectId)?.driveFolderId||''):(paymsSettings.generalReceiptsFolderId||'');
       if(!targetFolderId){
-        showToast('No Drive folder available for this receipt (project has none yet, or Updesh hasn\'t set a general receipts folder in Settings) - submitting without attachment','error');
-      }else{
-        const data=await uploadReceiptToDrive(receiptFile,targetFolderId);
-        req.receipt={fileName:data.fileName,webViewLink:data.webViewLink,uploadedByName:roleName(),uploadedAt:nowIso(),sizeKB:Math.round((data.sizeBytes||receiptFile.size||0)/1024)};
+        showToast('No Drive folder is set up for this receipt yet (project has none, or Updesh hasn\'t set a general receipts folder in Settings). Ask Updesh to configure this, or remove the attachment and submit without it.','error');
+        if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i>Submit to Reporting Manager';}
+        return;
       }
+      const data=await uploadReceiptToDrive(receiptFile,targetFolderId);
+      req.receipt={fileName:data.fileName,webViewLink:data.webViewLink,uploadedByName:roleName(),uploadedAt:nowIso(),sizeKB:Math.round((data.sizeBytes||receiptFile.size||0)/1024)};
     }
     await ref.set(req);showToast('Request submitted');switchTab('dashboard');
   }catch(e){
@@ -322,7 +323,16 @@ function requestTable(list,actions){
 }
 function renderApprovals(){const queue=paymsData.filter(canApprove);el('tab-approvals').innerHTML=`<div class="card"><div class="card-header">My approval queue</div>${requestTable(queue,true)}</div><div class="card"><div class="card-header">All open requests</div>${requestTable(visiblePaymsData().filter(r=>r.status!=='PAID'),false)}</div>`}
 function actionButtons(r){const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';return`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>${refer} <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`}
-async function approveRequest(id){const r=paymsData.find(x=>x.id===id);if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');const action=actionLabel(r.status),status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});showToast(action)}
+async function approveRequest(id){
+  const r=paymsData.find(x=>x.id===id);
+  if(!r||!canApprove(r))return showToast('You are not authorized for this approval','error');
+  const action=actionLabel(r.status);
+  const confirmMsg=`${action}?\n\nRequest: ${r.requestNo||r.id}\nTitle: ${r.title}\nAmount: Rs ${fmtAmt(r.amount)}\nSubmitted by: ${r.submitterName||r.submitterUsername}`;
+  if(!confirm(confirmMsg))return;
+  const status=nextStatus(r.status),audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action}];
+  await db.collection(PAYMS_COL).doc(id).update({status,updatedAt:nowIso(),audit});
+  showToast(action);
+}
 async function rejectRequest(id){const reason=prompt('Reason for rejection');if(reason===null)return;const r=paymsData.find(x=>x.id===id);const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Rejected request: '+(reason||'No reason entered')}];await db.collection(PAYMS_COL).doc(id).update({status:'REJECTED',updatedAt:nowIso(),audit});showToast('Request rejected','error')}
 async function referToPratim(id){const r=paymsData.find(x=>x.id===id);if(!r||!canReferToPratim(r))return showToast('Only Updesh can refer this request to Pratim','error');const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Referred to Pratim for verification / recommendation'}];await db.collection(PAYMS_COL).doc(id).update({status:'PENDING_PRATIM',referredToPratim:true,updatedAt:nowIso(),audit});showToast('Request referred to Pratim')}
 
