@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -75,9 +76,10 @@ const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
 const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
 const MAX_RECEIPT_BYTES=15*1024*1024;
-const PAYMS_BUILD='20260715.1';
+const PAYMS_BUILD='20260716.1';
+const DEFAULT_EXPENSE_TYPES=['Tour Advance','Vendor Payment','Reimbursement','Other Advance'];
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
-let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{}},activeTab='dashboard',selectedPaymentId='',editingRequestId='';
+let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{},expenseTypes:[...DEFAULT_EXPENSE_TYPES]},activeTab='dashboard',selectedPaymentId='',editingRequestId='';
 
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function el(id){return document.getElementById(id)}
@@ -86,6 +88,12 @@ function fmtAmt(n){return Number(n||0).toLocaleString('en-IN')}
 function today(){return new Date().toISOString().split('T')[0]}
 function nowIso(){return new Date().toISOString()}
 function norm(s){return String(s||'').trim().toLowerCase()}
+function configuredExpenseTypes(existingType=''){
+  const saved=Array.isArray(paymsSettings.expenseTypes)?paymsSettings.expenseTypes:DEFAULT_EXPENSE_TYPES;
+  const list=saved.map(v=>String(v||'').trim()).filter(Boolean);
+  if(existingType&&!list.some(v=>norm(v)===norm(existingType)))list.push(existingType);
+  return list.length?list:[...DEFAULT_EXPENSE_TYPES];
+}
 function roleName(){return currentUserData?.displayName||currentUserData?.fullName||currentUser||'-'}
 function isUser(name){return norm(currentUser)===norm(name)||norm(currentUserData?.fullName)===norm(name)}
 function isAdmin(){return ['admin','tech_admin'].includes(norm(currentUserRole))||norm(currentUser)==='updesh'}
@@ -153,7 +161,7 @@ function startPaymsListen(){
 function startSettingsListen(){
   if(settingsUnsub)settingsUnsub();
   settingsUnsub=db.collection(SETTINGS_COL).doc('hierarchy').onSnapshot(doc=>{
-    paymsSettings=doc.exists?{reportingManagers:{},...doc.data()}:{reportingManagers:{}};
+    paymsSettings=doc.exists?{reportingManagers:{},expenseTypes:[...DEFAULT_EXPENSE_TYPES],...doc.data()}:{reportingManagers:{},expenseTypes:[...DEFAULT_EXPENSE_TYPES]};
     renderAll();
   },err=>showToast('Could not load PayMS settings: '+err.message,'error'));
 }
@@ -259,8 +267,9 @@ function renderNew(){
     ?`<input type="hidden" id="f-manager" value="${esc(mappedValue)}"><div style="padding:8px 10px;border:1px solid var(--bd);border-radius:7px;background:#fafafa;font-size:12.5px;font-weight:600">${esc(userDisplay(mappedManager))}</div><div class="muted" style="margin-top:4px">Auto-assigned by Updesh's settings — no action needed.</div>`
     :`<select id="f-manager"><option value="">-- Select manager --</option>${managers.map(u=>`<option value="${esc(u.username||u.fullName)}">${esc(u.fullName||u.username)} (${esc(u.role||'user')})</option>`).join('')||'<option value="">No reporting manager mapped</option>'}</select><div class="muted" style="margin-top:4px">No mapped manager found; ask Updesh to configure Settings.</div>`;
   const crmOpts=[...contactsData.map(c=>({type:'Contact',id:c.id,label:c.name||c.company||c.contact||c.id})),...dealsData.map(d=>({type:'Deal',id:d.id,label:d.title||d.dealTitle||d.id}))];
+  const expenseTypes=configuredExpenseTypes(source?.type);
   el('tab-new').innerHTML=`<div class="card"><div class="card-header">Create payment request</div>
-    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleExpenseLinks()"><option>Tour Advance</option><option>Vendor Payment</option><option>Reimbursement</option><option>Other Advance</option></select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label>${managerField}</div></div>
+    <div class="form-row"><div class="form-group"><label class="req">Expense Type</label><select id="f-type" onchange="toggleExpenseLinks()">${expenseTypes.map(type=>`<option value="${esc(type)}">${esc(type)}</option>`).join('')}</select></div><div class="form-group"><label class="req">Amount</label><input id="f-amount" type="number" min="1"></div><div class="form-group"><label class="req">Reporting Manager</label>${managerField}</div></div>
     <div class="form-row"><div class="form-group"><label class="req">Title</label><input id="f-title" placeholder="Tour advance / vendor invoice"></div>
       <label class="check-opt"><input type="checkbox" id="f-project-expense" onchange="toggleExpenseLinks()"><span class="check-txt"><b>Project expense</b><span>Enable only when this expense belongs to a Wiki project.</span></span></label>
       <label class="check-opt"><input type="checkbox" id="f-sales-expense" onchange="toggleExpenseLinks()"><span class="check-txt"><b>Sales/BD expense</b><span>Enable only when this expense belongs to a CRM contact/deal.</span></span></label>
@@ -394,7 +403,13 @@ function renderSettings(){
   const managers=usersData.filter(u=>['manager','admin'].includes(norm(u.role))||norm(u.username)==='pratim'||norm(u.username)==='updesh');
   const users=usersData.filter(u=>norm(u.username)!=='updesh'&&!norm(u.fullName).includes('updesh')&&norm(u.username)!=='pratim'&&!norm(u.fullName).includes('pratim'));
   const map=paymsSettings.reportingManagers||{};
-  tab.innerHTML=`<div class="card"><div class="card-header">PayMS approval hierarchy <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
+  const expenseTypes=configuredExpenseTypes();
+  tab.innerHTML=`<div class="card"><div class="card-header">Expense Types <button class="btn primary sm" onclick="addExpenseType()"><i class="ti ti-plus"></i>Add Expense Type</button></div>
+    <div class="muted" style="margin-bottom:12px">These options appear in the Expense Type list when a payment request is created or resubmitted.</div>
+    <div class="table-wrap"><table><thead><tr><th>Expense Type</th><th style="width:120px">Action</th></tr></thead><tbody>
+      ${expenseTypes.map((type,index)=>`<tr><td><b>${esc(type)}</b></td><td><button class="btn sm" onclick="editExpenseType(${index})"><i class="ti ti-edit"></i>Edit</button></td></tr>`).join('')}
+    </tbody></table></div></div>
+  <div class="card"><div class="card-header">PayMS approval hierarchy <button class="btn primary sm" onclick="savePaymsSettings()"><i class="ti ti-device-floppy"></i>Save Settings</button></div>
     <div style="background:var(--pl);border-radius:8px;padding:11px 12px;margin-bottom:12px;font-size:12px;line-height:1.6">
       <b>Approval chain:</b> Submitter -> Reporting Manager -> Pratim -> Updesh -> Dev payment.<br>
       Direct reports to Pratim start at Pratim. Direct reports to Updesh start at Updesh, with an optional referral to Pratim.
@@ -407,6 +422,27 @@ function renderSettings(){
         return `<tr><td><b>${esc(u.fullName||u.displayName||u.username)}</b><div class="muted">${esc(u.username||'')}</div></td><td>${esc(u.role||'user')}</td><td><select data-user="${esc(userKey(u))}" data-username="${esc(u.username||'')}" data-fullname="${esc(u.fullName||u.displayName||u.username||'')}"><option value="">-- Select manager --</option>${managers.map(m=>`<option value="${esc(m.username||m.fullName)}" ${norm(currentVal)===norm(m.username)||norm(currentVal)===norm(m.fullName)?'selected':''}>${esc(m.fullName||m.username)} (${esc(m.username||m.role||'')})</option>`).join('')}</select></td><td>${next}</td></tr>`;
       }).join('')}
     </tbody></table></div></div>`;
+}
+async function persistExpenseTypes(expenseTypes,successMessage){
+  if(!canManageSettings())return showToast('Only Updesh can change expense types','error');
+  await db.collection(SETTINGS_COL).doc('hierarchy').set({expenseTypes,updatedAt:nowIso(),updatedBy:currentUser,updatedByName:roleName()},{merge:true});
+  showToast(successMessage);
+}
+async function addExpenseType(){
+  const value=String(prompt('Enter the new expense type')||'').trim();
+  if(!value)return;
+  const expenseTypes=configuredExpenseTypes();
+  if(expenseTypes.some(type=>norm(type)===norm(value)))return showToast('This expense type already exists','error');
+  try{await persistExpenseTypes([...expenseTypes,value],'Expense type added')}catch(e){showToast('Expense type not added: '+e.message,'error')}
+}
+async function editExpenseType(index){
+  const expenseTypes=configuredExpenseTypes(),current=expenseTypes[index];
+  if(current===undefined)return showToast('Expense type no longer exists','error');
+  const value=String(prompt('Edit expense type',current)||'').trim();
+  if(!value||value===current)return;
+  if(expenseTypes.some((type,i)=>i!==index&&norm(type)===norm(value)))return showToast('This expense type already exists','error');
+  expenseTypes[index]=value;
+  try{await persistExpenseTypes(expenseTypes,'Expense type updated')}catch(e){showToast('Expense type not updated: '+e.message,'error')}
 }
 async function savePaymsSettings(){
   if(!canManageSettings())return showToast('Only Updesh can save settings','error');
