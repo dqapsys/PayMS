@@ -72,7 +72,7 @@ const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
 const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
 const MAX_RECEIPT_BYTES=15*1024*1024;
-const PAYMS_BUILD='20260721.2';
+const PAYMS_BUILD='20260721.3';
 const DEFAULT_EXPENSE_TYPES=['Tour Advance','Vendor Payment','Reimbursement','Other Advance'];
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
 let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{},expenseTypes:[...DEFAULT_EXPENSE_TYPES]},activeTab='dashboard',selectedPaymentId='',selectedApprovalId='',editingRequestId='';
@@ -96,6 +96,8 @@ function isAdmin(){return ['admin','tech_admin'].includes(norm(currentUserRole))
 function isDev(){return norm(currentUser)==='dev'||norm(currentUserData?.fullName)==='dev'||isAdmin()}
 function isPratim(){return norm(currentUser)==='pratim'||norm(currentUserData?.fullName).includes('pratim')||isAdmin()}
 function isUpdesh(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh');}
+function isDevOnly(){return norm(currentUser)==='dev'||norm(currentUserData?.fullName)==='dev'}
+function canSeePayNow(){return isUpdesh()||isDevOnly()}
 function canManageSettings(){return norm(currentUser)==='updesh'||norm(currentUserData?.fullName).includes('updesh')}
 function showToast(msg,type='success'){const t=document.createElement('div');t.className='toast '+(type==='error'?'error':'success');t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200)}
 function showError(message){const d=document.createElement('div');d.className='error-screen';d.innerHTML=`<div class="error-card"><h2>PayMS Access</h2><p style="color:var(--t2);line-height:1.6">${esc(message)}</p><button class="btn primary" style="margin-top:16px" onclick="location.href='https://dqapsys.github.io/dqap-wiki/'">Go to Wiki</button></div>`;document.body.appendChild(d);el('appContainer').style.display='none'}
@@ -150,9 +152,30 @@ async function loadReferenceData(){
   if(contactsSnap.status==='fulfilled')contactsData=contactsSnap.value.docs.map(d=>({id:d.id,...d.data()}));
   if(dealsSnap.status==='fulfilled')dealsData=dealsSnap.value.docs.map(d=>({id:d.id,...d.data()}));
 }
+let legacyMigrationDone=false;
 function startPaymsListen(){
   if(paymsUnsub)paymsUnsub();
-  paymsUnsub=db.collection(PAYMS_COL).orderBy('createdAt','desc').onSnapshot(sn=>{paymsData=sn.docs.map(d=>({id:d.id,...d.data()}));renderAll()},err=>{showToast('Could not load PayMS data: '+err.message,'error')});
+  paymsUnsub=db.collection(PAYMS_COL).orderBy('createdAt','desc').onSnapshot(sn=>{paymsData=sn.docs.map(d=>({id:d.id,...d.data()}));renderAll();migrateLegacyApprovedClaims();},err=>{showToast('Could not load PayMS data: '+err.message,'error')});
+}
+async function migrateLegacyApprovedClaims(){
+  // One-time correction: claims that reached READY_FOR_PAYMENT under the old
+  // workflow (before the Pay Now step existed) never went through an explicit
+  // Pay Now action. They are approved but not actually cleared for transfer,
+  // so they're moved back to APPROVED and re-queued for Pay Now clearance.
+  if(legacyMigrationDone||!isUpdesh())return;
+  legacyMigrationDone=true;
+  const legacy=paymsData.filter(r=>r.status==='READY_FOR_PAYMENT'&&!(r.audit||[]).some(a=>String(a?.action||'').startsWith('Pay Now:')));
+  if(!legacy.length)return;
+  try{
+    const batch=db.batch();
+    legacy.forEach(r=>{
+      const ref=db.collection(PAYMS_COL).doc(r.id);
+      const audit=[...(r.audit||[]),{time:nowIso(),actor:roleName(),action:'Migrated: previously approved but unpaid claim moved back to Approved — requires explicit Pay Now clearance before Dev payment'}];
+      batch.update(ref,{status:'APPROVED',updatedAt:nowIso(),audit});
+    });
+    await batch.commit();
+    showToast(`${legacy.length} previously approved claim${legacy.length===1?'':'s'} moved to Approved — awaiting Pay Now`);
+  }catch(e){console.error('Legacy claim migration failed',e)}
 }
 function startSettingsListen(){
   if(settingsUnsub)settingsUnsub();
@@ -175,7 +198,7 @@ function isUpdeshValue(v){return norm(v)==='updesh'||norm(v).includes('updesh')}
 function managerIsPratim(r){return isPratimValue(r.managerUsername)||isPratimValue(r.managerName)}
 function managerIsUpdesh(r){return isUpdeshValue(r.managerUsername)||isUpdeshValue(r.managerName)}
 function canApprove(r){if(r.status==='PENDING_MANAGER')return currentUserRole==='manager'||isUser(r.managerUsername)||isUser(r.managerName)||isAdmin();if(r.status==='PENDING_PRATIM')return isPratim();if(r.status==='PENDING_UPDESH')return isUpdesh();return false}
-function canPayNow(r){return isUpdesh()&&r.status==='APPROVED'}
+function canPayNow(r){return canSeePayNow()&&r.status==='APPROVED'}
 function canReferToPratim(r){return r.status==='PENDING_UPDESH'&&managerIsUpdesh(r)&&isUpdesh()&&!r.referredToPratim}
 function nextStatus(s){return{PENDING_MANAGER:'PENDING_PRATIM',PENDING_PRATIM:'PENDING_UPDESH',PENDING_UPDESH:'APPROVED'}[s]||s}
 function actionLabel(s){return{PENDING_MANAGER:'Verified and forwarded to Pratim',PENDING_PRATIM:'Verified / recommended and forwarded to Updesh',PENDING_UPDESH:'Verified and approved (does not instruct Dev to transfer funds — use Pay Now to release payment)'}[s]||'Updated'}
@@ -382,7 +405,7 @@ function renderApprovals(){
 }
 function actionButtons(r){
   const approveBtn=canApprove(r)?`<button class="btn sm primary" onclick="approveRequest('${r.id}')">${r.status==='PENDING_UPDESH'?'Verify & Approve':'Verify / Recommend'}</button>`:'';
-  const payNowVisible=isUpdesh()&&(r.status==='PENDING_UPDESH'||r.status==='APPROVED');
+  const payNowVisible=canSeePayNow()&&(r.status==='PENDING_UPDESH'||r.status==='APPROVED');
   const payNowBtn=payNowVisible?` <button class="btn sm paynow" ${canPayNow(r)?'':'disabled title="Approve this claim first"'} onclick="payNowRequest('${r.id}')"><i class="ti ti-cash"></i>Pay Now</button>`:'';
   const refer=canReferToPratim(r)?` <button class="btn sm" onclick="referToPratim('${r.id}')">Refer to Pratim</button>`:'';
   const rejectBtn=canApprove(r)?` <button class="btn sm bad" onclick="rejectRequest('${r.id}')">Reject</button>`:'';
@@ -398,7 +421,7 @@ async function payNowRequest(id){
       const ref=db.collection(PAYMS_COL).doc(id),snap=await tx.get(ref);
       if(!snap.exists)throw new Error('Claim no longer exists');
       const latest={id:snap.id,...snap.data()};
-      if(latest.status!=='APPROVED'||!isUpdesh())throw new Error('Claim changed and is no longer available for Pay Now');
+      if(latest.status!=='APPROVED'||!canSeePayNow())throw new Error('Claim changed and is no longer available for Pay Now');
       const audit=[...(latest.audit||[]),{time:nowIso(),actor:roleName(),action:'Pay Now: cleared for fund transfer, sent to Dev'}];
       tx.update(ref,{status:'READY_FOR_PAYMENT',updatedAt:nowIso(),audit});
     });
