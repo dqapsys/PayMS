@@ -74,7 +74,7 @@ const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
 const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
 const MAX_RECEIPT_BYTES=15*1024*1024;
-const PAYMS_BUILD='20260723.3';
+const PAYMS_BUILD='20260723.4';
 const DEFAULT_EXPENSE_TYPES=['Tour Advance','Vendor Payment','Reimbursement','Other Advance'];
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
 let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{},expenseTypes:[...DEFAULT_EXPENSE_TYPES]},activeTab='dashboard',selectedPaymentId='',selectedApprovalId='',editingRequestId='',historySearchQuery='';
@@ -497,14 +497,13 @@ function updateAdvancePreview(){
   const[crmType,crmId]=(crmRaw||'|').split('|'),amount=Number(g('f-amount'))||0;
   if(!projectId&&!crmId){box.innerHTML='';return;}
   const outstanding=outstandingAdvanceForLink(projectId,crmType,crmId,norm(currentUser));
-  if(outstanding<=0){box.innerHTML='';return;}
   const applied=Math.min(outstanding,amount),netPayable=Math.max(amount-outstanding,0),netReceivable=Math.max(outstanding-amount,0),linkNoun=projectId?'project':'BD contact/deal';
-  box.innerHTML=`<div style="background:var(--pl);border-radius:8px;padding:11px 12px;margin-bottom:12px;font-size:12px;line-height:1.6">
-    <b>Advance on record for this ${linkNoun}: Rs ${fmtAmt(outstanding)}</b><br>
-    ${amount?`This claim will adjust Rs ${fmtAmt(applied)} against that advance.<br>`:'Enter an amount to see the adjusted payable/receivable.'}
-    ${amount&&netPayable>0?`<b>Net payable to you after adjustment: Rs ${fmtAmt(netPayable)}</b>`:''}
-    ${amount&&netReceivable>0?`<b>Advance balance remaining with you after this claim: Rs ${fmtAmt(netReceivable)}</b> (carries forward to your next claim on this ${linkNoun})`:''}
-    ${amount&&netPayable===0&&netReceivable===0?'<b>Fully settled — no balance either way.</b>':''}
+  box.innerHTML=`<div class="form-group" style="margin-bottom:4px"><label>Advance Adjustment <span class="muted" style="text-transform:none;font-weight:400">(this ${linkNoun})</span></label></div>
+  <div class="detail-grid" style="margin-bottom:12px">
+    <div class="detail-item"><div class="lbl">Advance on record</div><div class="val">Rs ${fmtAmt(outstanding)}</div></div>
+    <div class="detail-item"><div class="lbl">Adjusted against this claim</div><div class="val">Rs ${fmtAmt(applied)}</div></div>
+    <div class="detail-item"><div class="lbl">Net payable to you</div><div class="val">Rs ${fmtAmt(netPayable)}</div></div>
+    <div class="detail-item"><div class="lbl">Advance carried forward</div><div class="val">Rs ${fmtAmt(netReceivable)}</div></div>
   </div>`;
 }
 async function uploadReceiptToDrive(file,options){
@@ -670,17 +669,18 @@ function openHistoryClaim(id){selectedPaymentId=id;renderHistory()}
 function closeHistoryClaim(){selectedPaymentId='';renderHistory()}
 function claimDetail(r,closeFn='closeHistoryClaim'){const audit=[...(r.audit||[])].sort((a,b)=>String(b.time).localeCompare(String(a.time)));const p=r.payment||{};return`<div id="history-detail" class="history-modal" role="dialog" aria-modal="true" aria-label="Claim details" onclick="if(event.target===this)${closeFn}()"><div class="history-dialog"><div class="card-header"><span>Claim details · ${esc(r.requestNo||r.id)} &nbsp; ${statusBadge(r.status)}</span><button class="btn modal-close" type="button" aria-label="Close claim details" onclick="${closeFn}()"><i class="ti ti-x"></i></button></div><div class="history-dialog-body"><div class="detail-grid">
   <div class="detail-item"><div class="lbl">Claim ID</div><div class="val">${esc(r.requestNo||r.id)}</div></div><div class="detail-item"><div class="lbl">Request</div><div class="val">${esc(r.title)}<div class="muted">${esc(r.type)}</div></div></div><div class="detail-item"><div class="lbl">Amount</div><div class="val">Rs ${fmtAmt(r.amount)}</div></div><div class="detail-item"><div class="lbl">Submitter</div><div class="val">${esc(r.submitterName||r.submitterUsername)}</div></div>
-  <div class="detail-item"><div class="lbl">Expense incurred</div><div class="val">${esc(r.expenseDate||'Not recorded')}</div></div><div class="detail-item"><div class="lbl">Filed</div><div class="val">${fmtDateTime(r.createdAt)}</div></div><div class="detail-item"><div class="lbl">Last updated</div><div class="val">${fmtDateTime(r.updatedAt)}</div></div><div class="detail-item"><div class="lbl">Payment date</div><div class="val">${esc(p.date||'-')}</div></div><div class="detail-item"><div class="lbl">Payment reference</div><div class="val">${esc(p.utr||p.cheque||'-')}<div class="muted">${esc(p.method||'Not paid')}</div></div></div>
-  <div class="detail-item"><div class="lbl">Vendor / Payee</div><div class="val">${esc(r.vendor||'-')}</div></div><div class="detail-item"><div class="lbl">Reporting manager</div><div class="val">${esc(r.managerName||r.managerUsername||'-')}</div></div><div class="detail-item"><div class="lbl">Purpose / comments</div><div class="val">${esc(r.purpose||'-')}</div></div><div class="detail-item"><div class="lbl">Payment notes</div><div class="val">${esc(p.notes||'-')}</div></div>
-  </div><div class="detail-section"><h3>Related links</h3><div class="detail-links">${historyLinks(r)}</div></div>${advanceAdjustmentBlock(r)}${isAdvanceType(r.type)&&Number(r.advanceAdjustedTotal||0)>0?`<div class="detail-section"><div style="background:#FFF3E0;border-radius:8px;padding:11px 12px;font-size:12px;line-height:1.6"><b>Rs ${fmtAmt(r.advanceAdjustedTotal)}</b> of this advance has been adjusted against later claims. <b>Rs ${fmtAmt(Math.max(0,Number(r.amount||0)-Number(r.advanceAdjustedTotal||0)))}</b> remains outstanding.</div></div>`:''}${r.status==='READY_FOR_PAYMENT'?`<div class="detail-section"><h3>Record payment</h3>${paymentForm(r)}</div>`:''}${canForceReject(r)?`<div class="detail-section"><button class="btn bad" onclick="forceRejectRequest('${r.id}')"><i class="ti ti-ban"></i>Reject this claim (override — already ${r.status==='APPROVED'?'approved':'cleared for payment'})</button></div>`:''}<div class="detail-section"><h3>Audit trail</h3>${audit.length?audit.map(a=>`<div class="audit-row"><div class="muted">${fmtDateTime(a.time)}</div><div><b>${esc(a.actor||'-')}</b></div><div>${esc(a.action||'-')}</div></div>`).join(''):'<div class="empty">No audit activity recorded.</div>'}</div></div></div></div>`}
+  <div class="detail-item"><div class="lbl">Expense incurred</div><div class="val">${esc(r.expenseDate||'Not recorded')}</div></div><div class="detail-item"><div class="lbl">Filed</div><div class="val">${fmtDateTime(r.createdAt)}</div></div><div class="detail-item"><div class="lbl">Last updated</div><div class="val">${fmtDateTime(r.updatedAt)}</div></div><div class="detail-item"><div class="lbl">Payment date</div><div class="val">${esc(p.date||'-')}</div></div>
+  <div class="detail-item"><div class="lbl">Payment reference</div><div class="val">${esc(p.utr||p.cheque||'-')}<div class="muted">${esc(p.method||'Not paid')}</div></div></div><div class="detail-item"><div class="lbl">Vendor / Payee</div><div class="val">${esc(r.vendor||'-')}</div></div><div class="detail-item"><div class="lbl">Reporting manager</div><div class="val">${esc(r.managerName||r.managerUsername||'-')}</div></div><div class="detail-item"><div class="lbl">Advance Adjusted</div><div class="val">Rs ${fmtAmt(r.advanceAdjustment?.advanceApplied||0)}</div></div>
+  <div class="detail-item" style="grid-column:1/-1"><div class="lbl">Purpose / comments</div><div class="val">${esc(r.purpose||'-')}</div></div><div class="detail-item" style="grid-column:1/-1"><div class="lbl">Payment notes</div><div class="val">${esc(p.notes||'-')}</div></div>
+  </div><div class="detail-section"><h3>Related links</h3><div class="detail-links">${historyLinks(r)}</div></div>${advanceAdjustmentBlock(r)}${isAdvanceType(r.type)?`<div class="detail-section"><div style="background:#FFF3E0;border-radius:8px;padding:11px 12px;font-size:12px;line-height:1.6"><b>Rs ${fmtAmt(r.advanceAdjustedTotal||0)}</b> of this advance has been adjusted against later claims. <b>Rs ${fmtAmt(Math.max(0,Number(r.amount||0)-Number(r.advanceAdjustedTotal||0)))}</b> remains outstanding.</div></div>`:''}${r.status==='READY_FOR_PAYMENT'?`<div class="detail-section"><h3>Record payment</h3>${paymentForm(r)}</div>`:''}${canForceReject(r)?`<div class="detail-section"><button class="btn bad" onclick="forceRejectRequest('${r.id}')"><i class="ti ti-ban"></i>Reject this claim (override — already ${r.status==='APPROVED'?'approved':'cleared for payment'})</button></div>`:''}<div class="detail-section"><h3>Audit trail</h3>${audit.length?audit.map(a=>`<div class="audit-row"><div class="muted">${fmtDateTime(a.time)}</div><div><b>${esc(a.actor||'-')}</b></div><div>${esc(a.action||'-')}</div></div>`).join(''):'<div class="empty">No audit activity recorded.</div>'}</div></div></div></div>`}
 function advanceAdjustmentBlock(r){
-  const adj=r.advanceAdjustment;if(!adj)return'';
+  const adj=r.advanceAdjustment||{};
+  const applied=Number(adj.advanceApplied||0),netPayable=Number(adj.netPayable||0),netReceivable=Number(adj.netReceivable||0);
   const sourcesList=(adj.sources||[]).map(s=>`${esc(s.requestNo||s.claimId)} (Rs ${fmtAmt(s.amount)})`).join(', ');
-  return`<div class="detail-section"><h3>Advance adjustment</h3><div style="background:var(--pl);border-radius:8px;padding:11px 12px;font-size:12px;line-height:1.6">
-    <b>Advance adjusted against this claim: Rs ${fmtAmt(adj.advanceApplied||0)}</b>${sourcesList?` <span class="muted">(from ${sourcesList})</span>`:''}<br>
-    ${adj.netPayable>0?`<b>Net payable: Rs ${fmtAmt(adj.netPayable)}</b>`:''}
-    ${adj.netReceivable>0?`<b>Advance balance carried forward: Rs ${fmtAmt(adj.netReceivable)}</b>`:''}
-    ${!adj.netPayable&&!adj.netReceivable?'<b>Fully settled — no balance either way.</b>':''}
+  return`<div class="detail-section"><h3>Advance adjustment</h3><div class="detail-grid">
+    <div class="detail-item"><div class="lbl">Advance adjusted against this claim</div><div class="val">Rs ${fmtAmt(applied)}${sourcesList?`<div class="muted">from ${sourcesList}</div>`:''}</div></div>
+    <div class="detail-item"><div class="lbl">Net payable</div><div class="val">Rs ${fmtAmt(netPayable)}</div></div>
+    <div class="detail-item"><div class="lbl">Advance carried forward</div><div class="val">Rs ${fmtAmt(netReceivable)}</div></div>
   </div></div>`;
 }
 function renderHistory(){const list=historyData().filter(r=>historyMatchesQuery(r,historySearchQuery)).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));const selected=list.find(r=>r.id===selectedPaymentId);if(selectedPaymentId&&!selected)selectedPaymentId='';el('tab-history').innerHTML=`<div class="card"><div class="card-header"><span>Claim history</span><span class="muted">${list.length} claim${list.length===1?'':'s'}</span></div>
