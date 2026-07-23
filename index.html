@@ -57,6 +57,8 @@
   <section id="tab-approvals" class="tab-content"></section>
   <section id="tab-history" class="tab-content"></section>
   <section id="tab-settings" class="tab-content"></section>
+  <div id="restoreModalRoot"></div>
+  <input type="file" id="restore-file-input" accept="application/json" style="display:none" onchange="handleRestoreFile(this)">
 </div>
 
 <script>
@@ -72,10 +74,11 @@ const db=firebase.firestore();
 const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_COL='dqap_users',PROJ_COL='dqap_projects',CRM_CUSTOMERS='dqap_crm_customers',CRM_DEALS='dqap_crm_deals';
 const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
 const MAX_RECEIPT_BYTES=15*1024*1024;
-const PAYMS_BUILD='20260723.2';
+const PAYMS_BUILD='20260723.3';
 const DEFAULT_EXPENSE_TYPES=['Tour Advance','Vendor Payment','Reimbursement','Other Advance'];
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
 let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{},expenseTypes:[...DEFAULT_EXPENSE_TYPES]},activeTab='dashboard',selectedPaymentId='',selectedApprovalId='',editingRequestId='',historySearchQuery='';
+let restorePreviewRequests=null,restoreBackupSettings=null,restoreIncludeSettings=false,restoreInProgress=false;
 // Expense types that MUST have a Project or Sales/BD link selected before a request can be submitted.
 const LINK_REQUIRED_TYPES=['tour advance','out station travel','emd'];
 // Expense types treated as an "advance" for the purpose of auto-adjusting a later claim on the same project/BD.
@@ -131,6 +134,89 @@ function exportBackupCsv(){
   const csv=[cols.join(','),...rows].join('\n');
   downloadFile(`PayMS_Backup_${backupTimestamp()}.csv`,csv,'text/csv');
   showToast(`CSV export downloaded (${paymsData.length} requests)`);
+}
+function triggerRestoreFile(){
+  if(!isUpdesh())return showToast('Only Updesh can restore PayMS data','error');
+  el('restore-file-input')?.click();
+}
+async function handleRestoreFile(input){
+  if(!isUpdesh())return showToast('Only Updesh can restore PayMS data','error');
+  const file=input.files?.[0];if(!file)return;
+  try{
+    const text=await file.text();
+    const payload=JSON.parse(text);
+    const requests=Array.isArray(payload.requests)?payload.requests:(Array.isArray(payload)?payload:null);
+    if(!requests)throw new Error('This file does not look like a PayMS backup (no "requests" array found)');
+    restorePreviewRequests=requests;
+    restoreBackupSettings=(payload.settings&&typeof payload.settings==='object')?payload.settings:null;
+    restoreIncludeSettings=false;
+    renderRestoreModal();
+  }catch(e){
+    showToast('Could not read backup file: '+e.message,'error');
+  }finally{
+    input.value='';
+  }
+}
+function cancelRestore(){restorePreviewRequests=null;restoreBackupSettings=null;restoreIncludeSettings=false;restoreInProgress=false;renderRestoreModal();}
+function renderRestoreModal(){
+  const root=el('restoreModalRoot');if(!root)return;
+  if(!restorePreviewRequests){root.innerHTML='';return;}
+  const existingIds=new Set(paymsData.map(r=>r.id));
+  const missing=restorePreviewRequests.filter(r=>r.id&&!existingIds.has(r.id));
+  const already=restorePreviewRequests.length-missing.length;
+  const nothingToDo=missing.length===0&&!(restoreBackupSettings&&restoreIncludeSettings);
+  root.innerHTML=`<div class="history-modal" role="dialog" aria-modal="true" aria-label="Restore backup" onclick="if(event.target===this&&!restoreInProgress)cancelRestore()"><div class="history-dialog" style="max-width:560px">
+    <div class="card-header"><span>Restore from Backup</span><button class="btn modal-close" type="button" onclick="cancelRestore()" ${restoreInProgress?'disabled':''}><i class="ti ti-x"></i></button></div>
+    <div class="history-dialog-body">
+      <div class="detail-grid">
+        <div class="detail-item"><div class="lbl">In backup file</div><div class="val">${restorePreviewRequests.length}</div></div>
+        <div class="detail-item"><div class="lbl">Already in system (skipped)</div><div class="val">${already}</div></div>
+        <div class="detail-item"><div class="lbl">Will be added</div><div class="val strong" style="color:var(--ok)">${missing.length}</div></div>
+      </div>
+      <div class="muted" style="margin-bottom:12px">This restore is <b>additive-only</b>: claims already present in the system (matched by Claim ID) are never touched, changed, or overwritten. Only claims missing from the current database are added back, each stamped with a "Restored from backup" audit entry.</div>
+      ${restoreBackupSettings?`<label class="check-opt" style="margin-bottom:12px"><input type="checkbox" id="restore-settings-check" ${restoreIncludeSettings?'checked':''} onchange="restoreIncludeSettings=this.checked" ${restoreInProgress?'disabled':''}><span class="check-txt"><b>Also restore settings</b><span>Adds expense types and reporting-manager mappings found in the backup but missing from current settings. Existing settings are never overwritten.</span></span></label>`:''}
+      <div style="display:flex;gap:8px">
+        <button class="btn primary" ${nothingToDo||restoreInProgress?'disabled':''} onclick="confirmRestore()"><i class="ti ti-database-import"></i>${restoreInProgress?'Restoring...':'Confirm Restore'}</button>
+        <button class="btn" onclick="cancelRestore()" ${restoreInProgress?'disabled':''}>Cancel</button>
+      </div>
+    </div>
+  </div></div>`;
+}
+async function confirmRestore(){
+  if(!isUpdesh())return showToast('Only Updesh can restore PayMS data','error');
+  if(!restorePreviewRequests||restoreInProgress)return;
+  const existingIds=new Set(paymsData.map(r=>r.id));
+  const missing=restorePreviewRequests.filter(r=>r.id&&!existingIds.has(r.id));
+  const willRestoreSettings=!!(restoreBackupSettings&&restoreIncludeSettings);
+  if(!missing.length&&!willRestoreSettings)return showToast('Nothing to restore','error');
+  if(!confirm(`Restore ${missing.length} missing claim(s)${willRestoreSettings?' and merge settings':''}?\n\nExisting claims and settings are never overwritten.`))return;
+  restoreInProgress=true;renderRestoreModal();
+  try{
+    for(let i=0;i<missing.length;i+=450){
+      const batch=db.batch();
+      missing.slice(i,i+450).forEach(r=>{
+        const{id,...data}=r;
+        const ref=db.collection(PAYMS_COL).doc(id);
+        const audit=[...(data.audit||[]),{time:nowIso(),actor:roleName(),action:'Restored from backup by Updesh'}];
+        batch.set(ref,{...data,audit,restoredAt:nowIso(),restoredBy:currentUser,restoredByName:roleName()});
+      });
+      await batch.commit();
+    }
+    if(willRestoreSettings){
+      const currentExpenseTypes=configuredExpenseTypes();
+      const backupExpenseTypes=Array.isArray(restoreBackupSettings.expenseTypes)?restoreBackupSettings.expenseTypes:[];
+      const mergedExpenseTypes=[...currentExpenseTypes];
+      backupExpenseTypes.forEach(t=>{if(t&&!mergedExpenseTypes.some(x=>norm(x)===norm(t)))mergedExpenseTypes.push(t);});
+      const backupManagers=restoreBackupSettings.reportingManagers||{};
+      const mergedManagers={...backupManagers,...(paymsSettings.reportingManagers||{})};
+      await db.collection(SETTINGS_COL).doc('hierarchy').set({expenseTypes:mergedExpenseTypes,reportingManagers:mergedManagers,updatedAt:nowIso(),updatedBy:currentUser,updatedByName:roleName()},{merge:true});
+    }
+    showToast(`Restored ${missing.length} claim(s)${willRestoreSettings?' and merged settings':''}`);
+    cancelRestore();
+  }catch(e){
+    showToast('Restore failed: '+e.message,'error');
+    restoreInProgress=false;renderRestoreModal();
+  }
 }
 
 function initializeAuth(){
@@ -217,7 +303,7 @@ function startSettingsListen(){
 }
 
 function switchTab(tab){if(tab==='settings'&&!canManageSettings())return showToast('Only Updesh can open PayMS settings','error');activeTab=tab;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));renderAll()}
-function renderAll(){renderDashboard();renderNew();renderApprovals();renderHistory();renderSettings()}
+function renderAll(){renderDashboard();renderNew();renderApprovals();renderHistory();renderSettings();renderRestoreModal()}
 function statusBadge(s){const map={PENDING_MANAGER:['Manager Verify','s-manager'],PENDING_PRATIM:['Pratim Recommend','s-pratim'],PENDING_UPDESH:['Updesh Approval','s-updesh'],APPROVED:['Approved','s-approved'],READY_FOR_PAYMENT:['Transfer Cleared','s-cleared'],PAID:['PAID','s-paid'],REJECTED:['Rejected','s-rej'],WITHDRAWN_BY_USER:['Withdrawn by User','s-withdrawn']};const m=map[s]||['Open','s-open'];return`<span class="badge ${m[1]}">${m[0]}</span>`}
 function isPendingStatus(s){return['PENDING_MANAGER','PENDING_PRATIM','PENDING_UPDESH'].includes(s)}
 function isOwnRequest(r){const mine=currentUserKeys();return[norm(r?.submitterUsername),norm(r?.submitterName)].filter(Boolean).some(k=>mine.includes(k))}
@@ -341,6 +427,8 @@ function renderDashboard(){
     <div class="muted" style="margin-bottom:10px">Download a backup of all PayMS requests. JSON keeps full fidelity (including audit trails and settings) for restore; CSV is for quick spreadsheet review.</div>
     <button class="btn primary sm" onclick="exportBackupJson()"><i class="ti ti-download"></i>Export Full Backup (JSON)</button>
     <button class="btn sm" onclick="exportBackupCsv()" style="margin-left:8px"><i class="ti ti-file-spreadsheet"></i>Export CSV</button>
+    <button class="btn sm" onclick="triggerRestoreFile()" style="margin-left:8px"><i class="ti ti-database-import"></i>Restore from Backup</button>
+    <div class="muted" style="margin-top:8px">Restore is <b>additive-only</b> — it only adds claims missing from the current system and never overwrites or deletes anything that already exists.</div>
   </div>`:''}<div class="card"><div class="card-header">My pending claims <span class="muted">Edit is available until approval is completed</span></div>${requestTable(myPending,false,true)}</div><div class="card"><div class="card-header">Recent payment requests <button class="btn sm primary" onclick="startNewRequest()"><i class="ti ti-plus"></i>New</button></div>${requestTable(scoped.slice(0,10),false)}</div>`;
 }
 function renderNew(){
@@ -600,7 +688,7 @@ function renderHistory(){const list=historyData().filter(r=>historyMatchesQuery(
   ${historyTable(list)}</div>${selected?claimDetail(selected):''}`;paymentMethodChanged()}
 function openApprovalClaim(id){selectedApprovalId=id;renderApprovals()}
 function closeApprovalClaim(){selectedApprovalId='';renderApprovals()}
-document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(selectedPaymentId&&activeTab==='history')closeHistoryClaim();if(selectedApprovalId&&activeTab==='approvals')closeApprovalClaim();});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(selectedPaymentId&&activeTab==='history')closeHistoryClaim();if(selectedApprovalId&&activeTab==='approvals')closeApprovalClaim();if(restorePreviewRequests&&!restoreInProgress)cancelRestore();});
 function paymentForm(r){const disabled=r.status==='PAID'||!isDev()?'disabled':'';return`<div class="form-row"><div class="form-group"><label>Method</label><select id="pay-method" onchange="paymentMethodChanged()" ${disabled}><option>Bank Transfer</option><option>Cheque</option><option>Cash</option></select></div><div class="form-group"><label>Payment Date</label><input id="pay-date" type="date" value="${today()}" ${disabled}></div><div class="form-group bank-field"><label>Bank</label><input id="pay-bank" value="YES Bank" ${disabled}></div><div class="form-group utr-field"><label>UTR</label><input id="pay-utr" value="UTR202406300001" ${disabled}></div><div class="form-group cheque-field hidden"><label>Cheque Number</label><input id="pay-cheque" ${disabled}></div><div class="form-group"><label>Notes</label><textarea id="pay-notes" ${disabled}></textarea></div></div>${r.status==='PAID'?'<span class="badge s-paid">Status: PAID</span>':`<button class="btn ok" onclick="recordPayment('${r.id}')" ${disabled}><i class="ti ti-check"></i>Record Payment & Complete</button>`}${!isDev()?'<div class="muted" style="margin-top:8px">Only Dev / admin can record payment.</div>':''}`}
 function paymentMethodChanged(){const m=g('pay-method');document.querySelectorAll('.bank-field').forEach(x=>x.classList.toggle('hidden',m==='Cash'));document.querySelectorAll('.utr-field').forEach(x=>x.classList.toggle('hidden',m!=='Bank Transfer'));document.querySelectorAll('.cheque-field').forEach(x=>x.classList.toggle('hidden',m!=='Cheque'))}
 async function recordPayment(id){const r=paymsData.find(x=>x.id===id);if(!r||r.status!=='READY_FOR_PAYMENT')return showToast('Only ready-for-payment requests can be recorded','error');if(!isDev())return showToast('Switch to Dev finance user','error');const method=g('pay-method'),date=g('pay-date'),bank=g('pay-bank'),utr=g('pay-utr'),cheque=g('pay-cheque'),notes=g('pay-notes');if(method==='Bank Transfer'&&(!date||!bank||!utr))return showToast('Bank Transfer requires date, bank and UTR','error');if(method==='Cheque'&&(!date||!bank||!cheque))return showToast('Cheque requires date, bank and cheque number','error');if(method==='Cash'&&(!date||!notes))return showToast('Cash requires date and notes','error');const payment={method,date,bank,utr,cheque,notes,recordedBy:currentUser,recordedByName:roleName(),recordedAt:nowIso()};const changedAt=nowIso(),audit=[...(r.audit||[]),{time:changedAt,actor:roleName(),action:`Recorded ${method} payment. Status PAID${notes?'; comments: '+notes:''}`}];await db.collection(PAYMS_COL).doc(id).update({payment,status:'PAID',updatedAt:changedAt,audit});showToast('Status -> PAID')}
