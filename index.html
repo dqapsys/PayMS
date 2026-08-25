@@ -75,7 +75,7 @@ const PAYMS_COL='dqap_payms_requests',SETTINGS_COL='dqap_payms_settings',USERS_C
 const DRIVE_UPLOAD_API_URL='https://upload-receipt-932523956178.asia-south2.run.app';
 const MAX_RECEIPT_BYTES=15*1024*1024;
 const PAYMS_BUILD='20260723.4';
-const DEFAULT_EXPENSE_TYPES=['Tour Advance','Vendor Payment','Reimbursement','Other Advance'];
+const DEFAULT_EXPENSE_TYPES=['Tour Advance','Vendor Payment','Reimbursement','Other Advance','Referral Incentive'];
 let currentUser=null,currentUserRole=null,currentUserData=null,wikiSession=null,authInitialized=false;
 let paymsData=[],usersData=[],projectsData=[],contactsData=[],dealsData=[],paymsUnsub=null,settingsUnsub=null,paymsSettings={reportingManagers:{},expenseTypes:[...DEFAULT_EXPENSE_TYPES]},activeTab='dashboard',selectedPaymentId='',selectedApprovalId='',editingRequestId='',historySearchQuery='';
 let restorePreviewRequests=null,restoreBackupSettings=null,restoreIncludeSettings=false,restoreInProgress=false;
